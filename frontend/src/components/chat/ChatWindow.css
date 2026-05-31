@@ -1,0 +1,19 @@
+.chat-window {
+  @apply flex flex-col h-screen w-full max-w-2xl mx-auto bg-white shadow-sm;
+}
+
+.chat-window__header {
+  @apply flex items-center px-4 py-3 border-b border-gray-200 bg-white;
+}
+
+.chat-window__title {
+  @apply text-base font-semibold text-gray-900;
+}
+
+.chat-window__messages {
+  @apply flex-1 overflow-y-auto px-4 py-4 flex flex-col;
+}
+
+.chat-window__empty {
+  @apply text-sm text-gray-500 text-center mt-8;
+}
