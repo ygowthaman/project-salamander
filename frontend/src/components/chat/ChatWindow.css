@@ -17,3 +17,7 @@
 .chat-window__empty {
   @apply text-sm text-gray-500 text-center mt-8;
 }
+
+.chat-window__error {
+  @apply text-sm text-red-600 text-center mt-8;
+}

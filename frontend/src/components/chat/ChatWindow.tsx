@@ -6,15 +6,27 @@ import { MessageBubble } from "./MessageBubble";
 import { InputBar } from "./InputBar";
 import "./ChatWindow.css";
 
+// crypto.randomUUID exists only in secure contexts, so it is undefined when the
+// dev server is reached over plain HTTP on a LAN IP. These ids are just React
+// list keys — the persisted UUIDs come from the server — so a counter is fine.
+let nextLocalId = 0;
+function localId(): string {
+  return crypto.randomUUID?.() ?? `local-${nextLocalId++}`;
+}
+
 export function ChatWindow() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    createSession().then((session) => setSessionId(session.id));
+    createSession()
+      .then((session) => setSessionId(session.id))
+      // Without this the input stays disabled with no visible reason.
+      .catch(() => setError("Couldn't reach the server. Is the backend running?"));
   }, []);
 
   useEffect(() => {
@@ -28,7 +40,7 @@ export function ChatWindow() {
     onDone: () => {
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "assistant", content: streamingContent },
+        { id: localId(), role: "assistant", content: streamingContent },
       ]);
       setStreamingContent("");
       setIsStreaming(false);
@@ -39,7 +51,7 @@ export function ChatWindow() {
   });
 
   function handleSend(text: string) {
-    const userMessage: Message = { id: crypto.randomUUID(), role: "user", content: text };
+    const userMessage: Message = { id: localId(), role: "user", content: text };
     setMessages((prev) => [...prev, userMessage]);
     setIsStreaming(true);
     sendMessage(text);
@@ -52,7 +64,8 @@ export function ChatWindow() {
       </header>
 
       <div className="chat-window__messages">
-        {messages.length === 0 && !isStreaming && (
+        {error && <p className="chat-window__error">{error}</p>}
+        {!error && messages.length === 0 && !isStreaming && (
           <p className="chat-window__empty">Hi! What are you looking to buy today?</p>
         )}
         {messages.map((msg) => (
