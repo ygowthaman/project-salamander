@@ -14,13 +14,23 @@ env/
 # Environment variables — never commit secrets
 .env
 *.env
+.env.local
+.env.*.local
+# ...but .env.example files are the documentation and must be committed
+!.env.example
+!**/.env.example
 
 # Node
 node_modules/
 dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+.npm/
 
 # Docker
-*.dockerignore
+# NOTE: .dockerignore must be COMMITTED — it controls what goes into the build
+# context. A previous `*.dockerignore` rule here silently excluded it.
 
 # OS
 .DS_Store
