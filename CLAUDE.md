@@ -8,7 +8,7 @@ Salamander is a shopping agent — a chat web app where users describe what they
 
 ## Before Starting Any Work
 
-1. Read `docs/PLAN.md` — it is the source of truth for architecture, build order, data model, and future phases. Always check it before making structural decisions.
+1. Read `docs/ARCHITECTURE.md` — it is the source of truth for architecture, data model, runtime flows, and deployment. Always check it before making structural decisions. The forward-looking product roadmap lives in `docs/PRD.md`.
 2. Read all `*_CONTEXT.md` files relevant to the area you are working in. These explain the "why" behind each folder's design without duplicating what the code already says.
 
 Current context files:
@@ -29,8 +29,8 @@ Current context files:
 | Database | PostgreSQL + Drizzle ORM + `pg` |
 | Migrations | `drizzle-kit`, applied on server startup |
 | Validation | zod |
-| Local Dev DB | Local PostgreSQL 16 (Docker Compose optional) |
-| Deployment | Google Cloud Platform (Cloud Run + Cloud SQL), images built by Cloud Build |
+| Local Dev DB | Local PostgreSQL 16 |
+| Deployment | Google Cloud Platform (Cloud Run + Cloud SQL), deployed from source with Cloud Buildpacks |
 
 The backend lives in `node-server/`. `py-server/` is the superseded Python/FastAPI implementation, kept for reference until parity is confirmed against the frontend — do not add features there.
 

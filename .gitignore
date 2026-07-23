@@ -28,10 +28,6 @@ npm-debug.log*
 yarn-error.log*
 .npm/
 
-# Docker
-# NOTE: .dockerignore must be COMMITTED — it controls what goes into the build
-# context. A previous `*.dockerignore` rule here silently excluded it.
-
 # OS
 .DS_Store
 Thumbs.db

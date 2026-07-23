@@ -4,14 +4,15 @@ A shopping agent — a chat web app where you describe what you want to buy and 
 streams back suggestions in real time.
 
 This is Phase 1: LLM connectivity, WebSocket streaming, and session persistence. No
-auth, no external search APIs, no payments. See [`docs/PLAN.md`](docs/PLAN.md) for
-architecture, data model, and future phases.
+auth, no external search APIs, no payments. See
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for architecture, data model, and
+deployment, and [`docs/PRD.md`](docs/PRD.md) for the product roadmap.
 
 | Piece | Stack | Local URL |
 |---|---|---|
 | `frontend/` | React + Vite + TypeScript + Tailwind | http://localhost:5173 |
 | `node-server/` | Node 20 + TypeScript + Fastify + Drizzle | http://localhost:8000 |
-| PostgreSQL 16 | installed natively, or via `docker-compose.yml` | localhost:5432 |
+| PostgreSQL 16 | installed natively | localhost:5432 |
 | `py-server/` | Legacy Python/FastAPI backend — superseded, kept for reference | — |
 
 ---
@@ -19,12 +20,9 @@ architecture, data model, and future phases.
 ## Prerequisites
 
 - **Node.js 20+** — the server runs on 18, but `drizzle-kit` (used to generate
-  migrations) requires 20, and the Docker image is `node:20-slim`
-- **PostgreSQL 16** — installed locally (below), or via Docker
+  migrations) requires 20
+- **PostgreSQL 16** — installed locally (below)
 - **An Anthropic API key** — https://console.anthropic.com
-
-Docker is **not** required — neither to develop nor to deploy. Cloud Build builds
-the container images on Google's infrastructure. See [Docker](#docker-optional).
 
 ---
 
@@ -51,18 +49,7 @@ The service starts on boot, so this is a one-time step. Check it's up:
 pg_isready -h localhost -p 5432        # → localhost:5432 - accepting connections
 ```
 
-<details>
-<summary>Prefer Docker? <code>docker-compose.yml</code> is equivalent.</summary>
-
-```bash
-docker compose up -d        # PostgreSQL 16 on :5432, data in the postgres_data volume
-docker compose ps
-```
-
-Same credentials, same port — nothing else in the setup changes.
-</details>
-
-Either way you get PostgreSQL 16 on `localhost:5432` with user `postgres`,
+This gives you PostgreSQL 16 on `localhost:5432` with user `postgres`,
 password `postgres`, database `shopping` — matching the `DATABASE_URL` in
 `.env.example` with no edits.
 
@@ -113,7 +100,7 @@ Open **http://localhost:5173**.
 | `ANTHROPIC_API_KEY` | — | Required. Read automatically by the Anthropic SDK |
 | `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping` |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated |
-| `PORT` | `8000` | The Docker image sets `8080` |
+| `PORT` | `8000` | Cloud Run sets this automatically in production |
 | `HOST` | `0.0.0.0` | |
 
 `DATABASE_URL` takes a plain `postgresql://` scheme. The old
@@ -185,32 +172,31 @@ npm run build        # tsc -b && vite build → dist/
 npm run preview      # serve the production build locally
 npm run lint
 
-# Database (native install)
+# Database
 psql -h localhost -U postgres -d shopping     # password: postgres
 sudo systemctl status postgresql
 sudo -u postgres psql -c "DROP DATABASE shopping;"   # nuke and re-run migrations
-
-# Database (Docker alternative)
-docker compose up -d
-docker compose down          # stop, keep data
-docker compose down -v       # stop and wipe the volume
-docker compose exec db psql -U postgres -d shopping
 ```
 
 ---
 
 ## Deployment
 
-Target is Cloud Run + Cloud SQL. `docs/PLAN.md` has the full picture; two things
-matter enough to repeat here.
+Target is Cloud Run + Cloud SQL. `docs/ARCHITECTURE.md` has the full picture; two
+things matter enough to repeat here.
 
-**You don't need Docker to deploy.** Cloud Build builds the images remotely — the
-only CLI you need is `gcloud`.
+**Deploys build from source — no Docker.** Cloud Run builds the image from the
+source tree with Cloud Buildpacks; there is no Dockerfile to maintain and no local
+Docker to install. The only CLI you need is `gcloud`:
+
+```bash
+gcloud run deploy salamander-server --source .
+```
 
 **WebSockets need two non-default Cloud Run flags on the backend service:**
 
 ```bash
-gcloud run deploy salamander-server \
+gcloud run deploy salamander-server --source . \
   --session-affinity \    # keep a session's requests on one instance
   --timeout=3600          # max socket lifetime; the 300s default drops idle chats
 ```
@@ -218,27 +204,7 @@ gcloud run deploy salamander-server \
 Without `--timeout`, a user who reads for five minutes before replying gets
 disconnected. Session affinity is best-effort — a scale-down still cuts live
 sockets, and the frontend currently has no reconnect logic (see
-`docs/PLAN.md` → *Known gap: no client-side reconnect*).
-
----
-
-## Docker (optional)
-
-Not required for development or deployment. It's useful for one thing: iterating on
-the Dockerfile locally (~20s) instead of through Cloud Build (1–3 min per attempt).
-
-```bash
-cd node-server
-docker build -t salamander-server .
-docker run --rm -p 8080:8080 \
-  -e ANTHROPIC_API_KEY=sk-ant-... \
-  -e DATABASE_URL=postgresql://postgres:postgres@host.docker.internal:5432/shopping \
-  -e ALLOWED_ORIGINS=http://localhost:5173 \
-  salamander-server
-```
-
-`docker-compose.yml` runs Postgres only — the app services are run directly during
-local development and deployed to Cloud Run in production.
+`docs/ARCHITECTURE.md` → *Known gaps*).
 
 ---
 
@@ -251,8 +217,8 @@ pointed at the stale default LAN IP. Set it in `frontend/.env` and restart Vite.
 `cp .env.example .env`, or you're running from the repo root instead of
 `node-server/`.
 
-**`ECONNREFUSED 127.0.0.1:5432` on boot.** Postgres isn't running. Native:
-`sudo systemctl start postgresql`. Docker: `docker compose up -d`.
+**`ECONNREFUSED 127.0.0.1:5432` on boot.** Postgres isn't running — start it with
+`sudo systemctl start postgresql`.
 
 **`password authentication failed for user "postgres"`.** A fresh `apt` install uses
 peer auth with no password set — run the `ALTER USER postgres PASSWORD 'postgres';`
@@ -278,7 +244,7 @@ project-salamander/
 ├── node-server/    backend — see src/{db,api,agent}/*_CONTEXT.md for design notes
 ├── frontend/       React chat UI
 ├── py-server/      legacy Python backend, superseded by node-server
-├── docs/PLAN.md    architecture, data model, deployment, future phases
-├── PRD.md          the Python → Node rewrite spec
-└── docker-compose.yml   optional local Postgres
+└── docs/
+    ├── ARCHITECTURE.md   architecture, data model, runtime flows, deployment
+    └── PRD.md            forward-looking product roadmap
 ```

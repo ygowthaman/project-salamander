@@ -26,7 +26,7 @@ If the session lookup fails, the handler sends `{ type: "error", message: "Sessi
 
 `send()` is a no-op when the socket is no longer open, so if the client vanishes mid-turn the stream still drains and the assistant message is still persisted. The Python version behaved differently — `send_text` on a closed socket raised, which aborted the turn before the assistant message was saved.
 
-The new behaviour is the intentional one: the turn was already paid for, so discarding it helps nobody, and the completed message being in the database is what lets a reconnecting client recover it. The consequence is that a client which reconnects **must** re-fetch `GET /sessions/{id}/history` — otherwise it will be missing a turn that exists server-side. See `docs/PLAN.md` → *Known gap: no client-side reconnect*.
+The new behaviour is the intentional one: the turn was already paid for, so discarding it helps nobody, and the completed message being in the database is what lets a reconnecting client recover it. The consequence is that a client which reconnects **must** re-fetch `GET /sessions/{id}/history` — otherwise it will be missing a turn that exists server-side. See `docs/ARCHITECTURE.md` → *Known gaps*.
 
 ## Dependencies
 

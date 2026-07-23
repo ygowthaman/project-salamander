@@ -4,7 +4,7 @@ This folder handles all database connectivity and query logic for the Salamander
 
 ## Database
 
-PostgreSQL, accessed through Drizzle ORM over `pg` (node-postgres). In local dev it is a locally installed PostgreSQL 16 (`docker-compose.yml` is an equivalent alternative). In production it is Cloud SQL (GCP), connected via the Cloud SQL Auth Proxy sidecar on Cloud Run.
+PostgreSQL, accessed through Drizzle ORM over `pg` (node-postgres). In local dev it is a locally installed PostgreSQL 16. In production it is Cloud SQL (GCP), connected via the Cloud SQL Auth Proxy sidecar on Cloud Run.
 
 ## Dependencies
 
