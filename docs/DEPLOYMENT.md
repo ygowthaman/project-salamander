@@ -91,6 +91,15 @@ gcloud compute instances create salamander-db \
   --boot-disk-size=20GB
 ```
 
+> **`e2-micro` is free-tier but heavily contended** — you may hit
+> `ZONE_RESOURCE_POOL_EXHAUSTED`. It means Google is out of that machine type in
+> that zone right now, not a config error. Loop over the region's zones
+> (`for z in ${REGION}-a ${REGION}-b ${REGION}-c; do ... --zone="$z" ... && break; done`),
+> and if a whole region is dry, move to another free-tier region (`us-west1`,
+> `us-east1`) — but then you must recreate the **subnet, router, and NAT** in the
+> new region (the VPC is global and stays; those three are regional). Reusing the
+> same `SUBNET_CIDR` in the new region keeps the firewall rule valid unchanged.
+
 SSH in (over IAP) and install Postgres using the helper script:
 
 ```bash
@@ -148,11 +157,16 @@ gcloud run deploy salamander-server \
   --subnet=salamander-subnet \
   --vpc-egress=private-ranges-only \
   --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest \
-  --set-env-vars="ALLOWED_ORIGINS=https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com" \
+  --set-env-vars="^##^ALLOWED_ORIGINS=https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com" \
   --session-affinity \
   --timeout=3600 \
   --min-instances=1
 ```
+
+> **`^##^` is not optional.** `ALLOWED_ORIGINS` contains a comma, and gcloud uses
+> commas to separate *different* env vars — so an unescaped value fails with
+> `Bad syntax for dict arg`. The `^##^` prefix switches the delimiter to `##` for
+> this flag so the comma inside the value is left alone.
 
 The container runs pending migrations on boot, so the **DB must be reachable
 before this deploy** — if it isn't, the container exits and the deploy fails its
@@ -182,18 +196,47 @@ EOF
 
 npm install
 npm run build          # → frontend/dist
+```
 
-# One-time: add Firebase to the existing GCP project + install the CLI.
-npm install -g firebase-tools
-firebase login
-firebase projects:addfirebase "$PROJECT_ID"   # skips if already Firebase-enabled
+**Add Firebase to the project — do this in the console, once.** The CLI's
+`firebase projects:addfirebase` fails (`Failed to add Firebase…`) for an account
+that has never created a Firebase project, because it can't accept the Terms of
+Service for you. Clear it once by hand:
 
-firebase init hosting   # public dir: dist  |  SPA rewrite: Yes  |  project: $PROJECT_ID
-firebase deploy --only hosting
+1. Go to [console.firebase.google.com](https://console.firebase.google.com),
+   signed in as the **same Google account that owns the GCP project**.
+2. **Create a project** → in the name box, type the existing project ID
+   (`$PROJECT_ID`) and pick it from the **existing-Google-Cloud-projects**
+   dropdown that appears — don't create a new one. (Deep link if the dropdown
+   won't show it: `https://console.firebase.google.com/project/<PROJECT_ID>/overview`.)
+3. Accept the terms; turn Google Analytics **off**. If it asks for a billing
+   plan, pick **Blaze / pay-as-you-go** — the project already has billing, and
+   Hosting stays within the free quota (~$0 for a static SPA).
+
+Then deploy from the CLI (config written directly — no interactive `firebase init`):
+
+```bash
+firebase login   # in Cloud Shell: firebase login --no-localhost
+
+cat > firebase.json <<'EOF'
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+  }
+}
+EOF
+cat > .firebaserc <<EOF
+{ "projects": { "default": "${PROJECT_ID}" } }
+EOF
+
+firebase deploy --only hosting --project "$PROJECT_ID"
 ```
 
 Your app is now at `https://${PROJECT_ID}.web.app` — which is already in the
-backend's `ALLOWED_ORIGINS`, so CORS and the WebSocket handshake work.
+backend's `ALLOWED_ORIGINS`, so CORS and the WebSocket handshake work. (Firebase
+Hosting is global; only the backend/DB region matters.)
 
 ---
 
