@@ -242,11 +242,38 @@ Hosting is global; only the backend/DB region matters.)
 
 ## Redeploys
 
-- **Backend code change:** `gcloud run deploy salamander-server --source node-server --region="$REGION"`
-  (flags persist across deploys; you only re-pass them to change them).
-- **Frontend change:** `cd frontend && npm run build && firebase deploy --only hosting`.
-- **New DB migration:** commit the generated SQL under `node-server/drizzle/`; the
-  next backend deploy applies it on boot.
+**Deployment is fully manual.** Nothing is triggered by a `git commit` or push —
+there is no CI/CD or Cloud Build trigger wired up. Committing only updates the
+repo; production changes *only* when you run one of the commands below. (To make
+it automatic later you'd connect the repo via Cloud Run → *Set up continuous
+deployment*, but that's intentionally not enabled.)
+
+Run these from **Cloud Shell** after cloning/pulling the latest code. The live
+service is in **us-west1**, project **`project-salamander-503418`**.
+
+**Backend code change** — from the repo root:
+
+```bash
+cd ~/project-salamander && git pull
+gcloud run deploy salamander-server --source node-server --region=us-west1
+```
+
+The VPC, secrets, and WebSocket flags persist across deploys, so you don't re-pass
+them unless you're changing one. Migrations under `node-server/drizzle/` are
+applied automatically on the new revision's first boot — so a **new DB migration**
+needs no separate step, just commit the generated SQL and redeploy the backend.
+
+**Frontend change** — the backend URL is baked in at build time, so `.env.production`
+must already exist (it does from the first deploy):
+
+```bash
+cd ~/project-salamander/frontend && git pull
+npm run build
+firebase deploy --only hosting --project project-salamander-503418
+```
+
+Each redeploy creates a new versioned revision/release, so you can roll back from
+the Cloud Run or Firebase Hosting console if a deploy goes wrong.
 
 ## Operational notes for a self-managed DB
 
