@@ -1,0 +1,20 @@
+# Files NOT uploaded to Cloud Build when running `gcloud run deploy --source`.
+# NOTE: the presence of this file makes gcloud STOP honoring .gitignore, so
+# every exclusion must be listed here explicitly.
+
+# Never ship local deps or build output — the buildpack reinstalls/rebuilds.
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Never ship secrets.
+.env
+*.env
+!.env.example
+
+# Noise.
+npm-debug.log*
+.DS_Store
+
+# Keep everything the buildpack needs: package.json, package-lock.json,
+# tsconfig.json, src/, and drizzle/ (migrations applied on startup).
