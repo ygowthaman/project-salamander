@@ -238,6 +238,69 @@ Your app is now at `https://${PROJECT_ID}.web.app` — which is already in the
 backend's `ALLOWED_ORIGINS`, so CORS and the WebSocket handshake work. (Firebase
 Hosting is global; only the backend/DB region matters.)
 
+## 7. Custom domain (Cloudflare → Firebase Hosting)
+
+Points a subdomain you own (e.g. `salamander.axoliz.ai`, DNS on Cloudflare) at
+the Firebase-hosted frontend. The **backend keeps its `run.app` URL** — it's
+baked into the build and called directly, so it needs no domain and the frontend
+needs **no rebuild** (same build, new hostname). Live domain: `salamander.axoliz.ai`.
+
+### 7a. Allow the new origin on the backend — **do this first**
+
+`server.ts` restricts CORS to `ALLOWED_ORIGINS`. Serving the app from the new
+hostname changes the browser's `Origin`, so without this **every REST call fails
+CORS** the moment the domain goes live. Add the origin (keep the existing ones):
+
+```bash
+gcloud run services update salamander-server --region="$REGION" \
+  --update-env-vars="^##^ALLOWED_ORIGINS=https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com,https://salamander.axoliz.ai"
+```
+
+Same `^##^` delimiter trick as the first deploy (the value contains commas). It's
+harmless to run before the domain resolves, so do it up front to avoid a
+broken-CORS window.
+
+### 7b. Add the domain in Firebase
+
+1. Firebase console → **Hosting** → **Add custom domain** → enter the subdomain.
+2. Firebase returns the DNS record to create. The current flow returns a single
+   **CNAME** (`salamander` → `${PROJECT_ID}.web.app`); older flows returned two
+   `A` records to `199.36.30.x`. Either works — create whatever it shows.
+
+### 7c. Create the record in Cloudflare
+
+Cloudflare → the zone (`axoliz.ai`) → **DNS** → **Add record**:
+
+| Type | Name | Target | Proxy |
+|---|---|---|---|
+| CNAME | `salamander` | `${PROJECT_ID}.web.app` | **DNS only (grey cloud)** |
+
+- **Name is the subdomain label only** (`salamander`), not the FQDN — Cloudflare
+  appends the zone. Typing the full name yields `salamander.axoliz.ai.axoliz.ai`.
+- **Target has no `https://` / trailing slash.**
+- **Grey cloud, not orange.** Firebase provisions its cert via an ACME challenge
+  that must reach Firebase directly; Cloudflare's proxy intercepts it and cert
+  minting stalls. (You can switch to orange *after* the cert is issued, but then
+  you must also set Cloudflare SSL mode to **Full** or you get a redirect loop.
+  Simplest is to leave it grey — Firebase serves HTTPS itself.)
+
+### 7d. Verify, then wait for the certificate
+
+Click **Verify**/**Finish** in Firebase. Then two waits:
+
+- **DNS propagation** — a fresh Cloudflare record is usually live in minutes.
+  Check with `dig +short salamander.axoliz.ai`; correct output shows the
+  `...web.app` chain and/or `199.36.30.x` IPs. Cloudflare IPs (`104.x`, `172.67.x`)
+  mean the record is still proxied (orange) — flip it to grey.
+- **Certificate minting** — Firebase shows **"Minting Certificate"** and browsers
+  throw `ERR_CERT_COMMON_NAME_INVALID` in the meantime. **This is expected**: DNS
+  is correct, Firebase just hasn't installed your cert yet. Usually 30–60 min,
+  worst case ~24h. Don't bypass the warning — it clears itself when the Hosting
+  page flips to **Connected**. Then hard-refresh (Ctrl+Shift+R).
+
+Because 7a already allowed the origin, chat and the WebSocket work the instant the
+cert is live.
+
 ---
 
 ## Redeploys
