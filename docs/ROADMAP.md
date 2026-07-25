@@ -17,18 +17,27 @@ inventory-aware shopping agent specified in [`PRD.md`](PRD.md). The PRD is the a
 Goal: a real multi-user app where each user owns a private inventory, can manage it directly, and
 can update stock levels by typing plain sentences that the LLM parses and applies live.
 
-### a) Accounts, authentication & sessions — full stack
-_PRD §3, build steps 1–2._
+### a) Accounts, authentication & sessions — full stack ✅ *implemented*
+_PRD §3 (incl. §3.7), build steps 1–2._
 
-- **Backend:** `users` + `auth_sessions` tables; argon2id password hashing; JWT access token in an
-  httpOnly / Secure / SameSite cookie; refresh + server-side revocation; Fastify auth `preHandler`
-  plugin; **authentication at the WebSocket handshake**; CSRF defense (SameSite cookie + CSRF token +
-  Origin/Referer check); login throttling/lockout; account lifecycle (`PATCH /auth/me`,
-  change-password with other-session revocation, `DELETE /auth/me` hard-delete cascade).
+> **Delivered with Google OAuth in addition to email + password** — overriding PRD §1's
+> password-only lock and §9's "OAuth is a non-goal." Caveat: flows requiring a database round-trip
+> are implemented but not yet verified against a live Postgres, and no account-settings UI exists.
+> See `ARCHITECTURE.md` → Known gaps.
+
+- **Backend:** `users` + `oauth_accounts` + `auth_sessions` tables; argon2id password hashing;
+  **Google OAuth (OIDC authorization-code flow with PKCE)**; JWT access token in an
+  httpOnly / Secure / SameSite cookie; refresh with rotation, server-side revocation and replay
+  detection; Fastify auth `preHandler` plugin; **authentication at the WebSocket handshake**;
+  CSRF defense (SameSite cookie + double-submit token + Origin check); login throttling; account
+  lifecycle (`PATCH /auth/me`, change-password with other-session revocation, `DELETE /auth/me`
+  hard-delete cascade).
 - **Schema impact:** `sessions` gains `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`;
   `POST /sessions`, history, and the WS handler become user-scoped with ownership checks.
-- **Frontend:** signup / login / logout screens, auth guard, account-settings screen (profile /
-  password / delete), all API and WS calls credentialed (`credentials: 'include'`).
+- **Frontend:** signup / login / logout screens with a "Continue with Google" button, auth guard,
+  all API and WS calls credentialed (`credentials: 'include'`) with single-flight token refresh.
+  **The account-settings screen (profile / password / delete) is still outstanding** — the routes
+  exist, nothing calls them.
 
 ### b) Inventory creation — CRUD, full stack
 _PRD §5.1 (precise path), build step 3._

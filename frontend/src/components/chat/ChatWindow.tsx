@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Message } from "../../types";
+import { useAuth } from "../../auth/useAuth";
 import { createSession } from "../../api/sessions";
 import { useWebSocket } from "../../hooks/useWebSocket";
 import { MessageBubble } from "./MessageBubble";
@@ -15,6 +16,7 @@ function localId(): string {
 }
 
 export function ChatWindow() {
+  const { user, signOut } = useAuth();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingContent, setStreamingContent] = useState<string>("");
@@ -61,6 +63,15 @@ export function ChatWindow() {
     <div className="chat-window">
       <header className="chat-window__header">
         <h1 className="chat-window__title">Shopping Assistant</h1>
+        <div className="chat-window__account">
+          {user?.avatar_url && (
+            <img className="chat-window__avatar" src={user.avatar_url} alt="" />
+          )}
+          <span className="chat-window__user">{user?.display_name ?? user?.email}</span>
+          <button className="chat-window__signout" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        </div>
       </header>
 
       <div className="chat-window__messages">

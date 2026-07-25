@@ -4,9 +4,19 @@ This folder contains the Fastify route handlers. Each file is a `FastifyPluginAs
 
 ## Structure
 
+- **auth.ts** — `/auth/*`: signup, login, Google OAuth redirect + callback, refresh, logout, and the account lifecycle routes. The reasoning behind the token, cookie and OAuth design lives in `../auth/AUTH_CONTEXT.md`.
+
 - **sessions.ts** — REST endpoints for session creation and message history. Also owns the zod request/response schemas for both sessions and messages, since no other layer needs them. Zod replaces what Pydantic did in the Python implementation: parse the input, and shape the output explicitly.
 
 - **websocket.ts** — WebSocket endpoint (`/ws/:session_id`). Handles the real-time message loop: loads history, saves messages, streams tokens from the agent layer back to the client.
+
+## Authentication and ownership
+
+Every route here requires a signed-in user via the `requireAuth` preHandler. The owner of a new session comes from `request.user`, never from the request body.
+
+Reads are scoped by owner in the repository itself — there is no unscoped `getSession`, only `getSessionForUser` — so a route cannot accidentally return another user's conversation. A session that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists.
+
+The WebSocket authenticates at the **handshake** (the cookie rides the upgrade request) and validates `Origin` there too, because CORS does not apply to WebSockets. Ownership is then re-checked on every message, not just at connect: the socket can outlive the 15-minute access token, and the account may be deleted mid-connection.
 
 ## DB session scoping
 

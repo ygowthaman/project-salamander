@@ -28,6 +28,12 @@ After editing `schema.ts`, run `npm run db:generate` and commit the generated SQ
 
 - **migrate.ts** — runs pending migrations. Called by `server.ts` at boot; also runnable standalone via `npm run db:migrate`.
 
-- **repositories/sessions.ts** — query logic for the `sessions` table.
+- **repositories/users.ts** — query logic for `users`. Owns email normalisation (lowercasing) so a caller cannot forget and create a case-duplicate account.
+
+- **repositories/oauthAccounts.ts** — provider identity links, keyed on the provider's stable subject id rather than email. See `../auth/AUTH_CONTEXT.md`.
+
+- **repositories/authSessions.ts** — refresh-token records and revocation. `getByRefreshHash` deliberately returns revoked and expired rows so the refresh route can tell an unknown token from a replayed one.
+
+- **repositories/sessions.ts** — query logic for the `sessions` table. Every read is scoped by `user_id`; there is intentionally no unscoped lookup.
 
 - **repositories/messages.ts** — query logic for the `messages` table. `getHistory` orders by `created_at` ascending, backed by the `(session_id, created_at)` index.

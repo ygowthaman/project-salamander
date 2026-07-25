@@ -3,8 +3,9 @@
 A shopping agent — a chat web app where you describe what you want to buy and Claude
 streams back suggestions in real time.
 
-This is Phase 1: LLM connectivity, WebSocket streaming, and session persistence. No
-auth, no external search APIs, no payments. See
+Phase 1 delivered LLM connectivity, WebSocket streaming, and session persistence.
+**Accounts have since been added** — sign in with Google or with email + password,
+and every chat session belongs to a user. No external search APIs, no payments. See
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for architecture, data model, and
 deployment, and [`docs/PRD.md`](docs/PRD.md) for the product roadmap.
 
@@ -63,15 +64,36 @@ npm run dev
 ```
 
 Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it applies
-any pending migrations from `drizzle/`, so the `sessions` and `messages` tables are
-created automatically on the first run.
+any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`,
+`auth_sessions`, `sessions` and `messages` tables on the first run.
+
+> **The auth migration deletes pre-auth chat data.** `0001_auth_users_oauth.sql`
+> drops every row in `sessions` (and their messages, via the cascade) because
+> anonymous conversations have no owner to satisfy the new `NOT NULL user_id`.
+> First run on an existing database wipes that history.
+
+**Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
+`/auth/google` returns 503 and the "Continue with Google" button fails until they
+are set. To enable it, create a Web application OAuth client with the redirect URI
+`http://localhost:8000/auth/google/callback` (see
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §9).
 
 Verify:
 
 ```bash
-curl -X POST http://localhost:8000/sessions \
-  -H 'Content-Type: application/json' -d '{}'
-# {"id":"...","title":"New Session","created_at":"2026-07-22T..."}
+# Unauthenticated — expect 401 plus a Set-Cookie minting the CSRF token.
+curl -i http://localhost:8000/auth/me
+# HTTP/1.1 401 Unauthorized
+# set-cookie: sal_csrf=...
+```
+
+`POST /sessions` now requires a session cookie *and* an `X-CSRF-Token` header
+matching the `sal_csrf` cookie, so it is easiest to exercise through the app
+rather than curl. Run the guard-layer checks with:
+
+```bash
+npm test        # tokens, PKCE, CSRF, Origin, auth gating — needs no database
 ```
 
 ### 3. Frontend
