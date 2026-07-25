@@ -58,7 +58,7 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1 className="login-card__title">Salamander</h1>
+        <h1 className="login-card__title">🦎Salamander</h1>
         <p className="login-card__subtitle">
           {mode === "signin" ? "Sign in to your account" : "Create an account"}
         </p>
