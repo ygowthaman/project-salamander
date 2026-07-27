@@ -1,36 +1,90 @@
 # Agent Context
 
-This is the LLM layer of the backend. It is intentionally isolated from routing and database concerns — its only job is to talk to Claude and stream the response back to the caller.
+This is the LLM layer of the backend. It is intentionally isolated from routing and database
+concerns — its only job is to talk to Claude and hand back **structured, parsed data**.
+
+> ⚠️ **This describes the target, not `index.ts` as it stands.** Today this folder contains the
+> Phase 1 chat streaming generator — a system prompt with an assistant persona and an async
+> generator that yields `text_delta` chunks. It is **to be deleted**, not refactored; see
+> `docs/ARCHITECTURE.md` → *Removing the chat app*. Everything below is what replaces it.
+
+## The model is an interpreter, not a conversationalist
+
+There is to be no chat in this application. Nothing in this folder should hold a dialogue, stream
+tokens, or keep conversation state. Every function here is the same shape:
+
+```
+(user text, context) → Claude (single turn, tool use) → structured JSON → caller validates → DTO
+```
+
+The user types *"Add 1984 to my Books"*; the interpretation function returns
+`{ category: "Books", name: "1984", … }`; the API layer validates it and writes the row. The model's
+output is an **input to application logic** — it is never sent to the browser as-is.
+
+If you find yourself adding a `messages` array, a system persona, or a streaming generator here,
+stop: that is the chat app being kept alive rather than removed.
 
 ## Responsibility
 
-`index.ts` owns two things:
+One **interpretation function per target**, each owning:
 
-- The **system prompt** — defines the shopping assistant persona and behaviour. Isolated here so it can be tuned without touching any other layer.
-- The **streaming function** — takes a conversation history and yields Claude's response as text chunks, one at a time.
+- **Its prompt** — isolated so it can be tuned without touching any other layer.
+- **Its tool / output schema** — the tool's `input_schema` *is* the target schema, so the model is
+  forced to return schema-shaped JSON rather than prose that needs regexing out.
+
+Targets (see `docs/PRD.md` §8.1–8.2): inventory item definitions, inventory stock updates, search
+queries, mandates/grants, product selection, and the fallback judgment call.
+
+## What this layer must not do
+
+- **No database access.** Context (item names, ids, stock levels, thresholds) is passed in as
+  arguments by the caller. This is deliberate: it keeps `user_id` scoping entirely server-side, so a
+  model response can name *what* to write but never *whose* row to touch.
+- **No writes, no side effects.** Interpretation returns data; the API layer decides whether to
+  commit it.
+- **No trust in the model's shape.** The caller re-validates every response with the same zod schema
+  the route would accept directly. Tool use makes malformed output unlikely, not impossible.
+
+## Validation is the caller's job, and it is not optional
+
+Both commit patterns (`docs/PRD.md` §5.0) depend on it:
+
+- **Direct commit** (inventory) — interpret → validate → write. The zod check is the *only* thing
+  between a bad parse and the database.
+- **Confirm-before-commit** (mandates, grants) — interpret → validate → show a draft → write on
+  approval.
+
+Direct commit removes the human approval step, **not** the schema gate. A failed or low-confidence
+interpretation persists nothing under either pattern.
 
 ## SDK
 
-The Anthropic TypeScript SDK (`@anthropic-ai/sdk`) is used to communicate with Claude. It handles authentication via `ANTHROPIC_API_KEY` from the environment, request formatting, and the streaming protocol.
+The Anthropic TypeScript SDK (`@anthropic-ai/sdk`) handles authentication via `ANTHROPIC_API_KEY`
+from the environment, request formatting, and tool use. It is async and non-blocking by
+construction, so one process serves concurrent interpretation calls without blocking the event loop.
 
-## Streaming
+Calls are **non-streaming**: the response is awaited whole, because it has to be validated before
+anything can be done with it. There is no partial-output case to handle.
 
-Rather than waiting for Claude to finish generating a full response, the SDK streams it incrementally. The agent exposes this as an async generator — each chunk of text is yielded as soon as it arrives, so the WebSocket layer can forward it to the browser in real time.
+## Reliability and cost
 
-Filtering is on `content_block_delta` events with a `text_delta` delta, so thinking blocks or other block types (should they be enabled later) will not leak into the user-visible stream.
+Each call runs synchronously inside the request that triggered it, so it needs a timeout, one
+bounded retry on transient errors, and a clean user-facing failure ("couldn't read that, try
+rephrasing") rather than a 500.
 
-## Prompt caching
+**Prompt caching:** set `cache_control: { type: "ephemeral" }` on the static prefix — instructions
+plus the JSON schema. Unlike the ~60-token chat prompt this layer replaces (which sits below the
+minimum and never engages caching at all), a schema-bearing extraction prompt should clear it
+comfortably — but note the minimum is **model-dependent and not monotonic** (1024 tokens on Sonnet
+4.6, 4096 on Haiku 4.5), so tiering down to a cheaper model can silently switch caching off. Check `usage.cache_read_input_tokens` is non-zero once the first
+extractor ships rather than assuming it.
 
-`cache_control: { type: "ephemeral" }` is set on the system prompt block. Because the system prompt is byte-identical on every request, the API can cache that prefix and skip reprocessing it.
-
-**Caveat worth knowing:** the current system prompt is only ~60 tokens, well under the minimum cacheable prefix (1024–4096 tokens depending on model). Caching therefore will not actually engage yet — `usage.cache_read_input_tokens` will be `0`. The `cache_control` marker is in place so that caching starts working automatically once the prompt grows, at no cost today. Do not interpret zero cache reads as a bug until the prompt is over the minimum.
-
-## Sync vs async client
-
-The Python implementation used the synchronous `Anthropic()` client inside an async function, which blocked the event loop under concurrent load; migrating to `AsyncAnthropic()` was a known outstanding fix. That problem does not exist here — the JS/TS SDK is async and non-blocking by construction, so the issue was resolved by the platform switch rather than by a code change.
+Log tokens, latency, and model per call — with the model on the hot path of nearly every user
+action, cost needs to be measurable rather than a surprise.
 
 ## Dependencies and consumers
 
-This folder has no dependency on the database or API layers — only the Anthropic SDK.
+This folder depends only on the Anthropic SDK — not on the database or API layers.
 
-It is consumed exclusively by `api/websocket.ts`, which orchestrates the full message flow: loading history, saving messages, and forwarding streamed tokens to the client. See `../api/API_CONTEXT.md` for that layer.
+It is consumed by the route handlers in `../api/`, which assemble context, call an interpretation
+function, validate the result, and commit it. See `../api/API_CONTEXT.md`.

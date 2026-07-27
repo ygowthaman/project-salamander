@@ -1,39 +1,99 @@
 # API Context
 
-This folder contains the Fastify route handlers. Each file is a `FastifyPluginAsync` covering one domain, registered by `server.ts`.
+This folder contains the Fastify route handlers. Each file is a `FastifyPluginAsync` covering one
+domain, registered by `server.ts`.
 
 ## Structure
 
-- **sessions.ts** — REST endpoints for session creation and message history. Also owns the zod request/response schemas for both sessions and messages, since no other layer needs them. Zod replaces what Pydantic did in the Python implementation: parse the input, and shape the output explicitly.
+Domain route files (auth, inventory, mandates, …) plus the WebSocket push channel. Each route file
+owns its zod request/response schemas, since no other layer needs them — zod parses the input and
+shapes the output explicitly.
 
-- **websocket.ts** — WebSocket endpoint (`/ws/:session_id`). Handles the real-time message loop: loads history, saves messages, streams tokens from the agent layer back to the client.
+> ⚠️ **This describes the target surface.** Today this folder contains `sessions.ts` (the chat REST
+> routes) and `websocket.ts` (the token-streaming chat socket). Both are **to be deleted** — see
+> `docs/ARCHITECTURE.md` → *Removing the chat app*. There is to be no chat route and no streaming
+> endpoint; the sections below describe what replaces them.
 
-## DB session scoping
+## The interpret flow
 
-The WebSocket connection is long-lived, but each incoming message needs its own transaction — one held open for the socket's lifetime would pin a pooled connection for as long as the user keeps the tab open, and would leave a transaction open across the entire LLM stream.
+Routes that accept natural language all follow one shape:
 
-So each turn opens two short transactions: one for *look up session → load history → save the user message*, and one for *save the assistant message* after the stream completes. The LLM call happens between them, with no transaction open. This is the same per-message scoping the Python version used with `AsyncSessionFactory`, expressed as `db.transaction(...)` instead.
+```
+1. Parse the request body with zod        { text: "Add 1984 to my Books" }
+2. Assemble context from the DB           the user's item names + ids, stock levels, thresholds
+3. Call an agent-layer interpretation fn  → structured JSON
+4. Validate it with the SAME zod schema   invalid / low-confidence → 422, nothing written
+5. Commit, or return a draft              per module (below)
+6. Push the change on the user's channel
+7. Respond with what happened             so the UI can clear the input and show the result
+```
 
-## Ordering
+Steps 1–4 are identical everywhere. **Step 5 is the only thing that varies**, and it is a per-module
+decision (`docs/PRD.md` §5.0):
 
-Socket `message` events can fire while a previous turn is still streaming. The handler chains them through a promise queue so turns are processed strictly in order — otherwise two concurrent turns would interleave their `chunk` frames and race on writing history.
+- **Direct commit** — inventory. One round trip: write, push, respond with the applied diff.
+- **Confirm-before-commit** — mandates and grants. Two round trips: a `/parse` route returns a
+  validated draft and persists nothing; a second request commits the user-approved object.
 
-## Session-not-found stays connected
+Because both share steps 1–4, switching a module later means adding or removing a `/parse` route and
+a UI step — not rewriting its interpreter.
 
-If the session lookup fails, the handler sends `{ type: "error", message: "Session not found" }` and keeps the socket open, waiting for the next message. It does not close the connection. The frontend's `useWebSocket` hook has no reconnect logic, so closing here would leave the UI permanently dead until a page reload.
+**Validation is not the variable part.** A failed interpretation writes nothing under either
+pattern; direct commit drops the human approval step, not the schema check.
 
-## Disconnect mid-stream
+## Ownership scoping
 
-`send()` is a no-op when the socket is no longer open, so if the client vanishes mid-turn the stream still drains and the assistant message is still persisted. The Python version behaved differently — `send_text` on a closed socket raised, which aborted the turn before the assistant message was saved.
+`user_id` comes from the authenticated session (`request.user`), never from the request body and
+never from a model response. Every repository call is scoped by it. A request for another user's
+resource returns **404, not 403** — don't confirm that the row exists.
 
-The new behaviour is the intentional one: the turn was already paid for, so discarding it helps nobody, and the completed message being in the database is what lets a reconnecting client recover it. The consequence is that a client which reconnects **must** re-fetch `GET /sessions/{id}/history` — otherwise it will be missing a turn that exists server-side. See `docs/ARCHITECTURE.md` → *Known gaps*.
+An interpretation result names *what* to write; the server decides *whose* row it lands on.
+
+## Transaction scoping
+
+Keep transactions short and never hold one across an LLM call — that would pin a pooled connection
+for the duration of a network round trip to Anthropic. Assemble context, close the read, make the
+call, then open a transaction for the write.
+
+A single interpret-and-commit does its write inside one transaction so the row change and its
+`inventory_events` audit row land together. Repositories take a `DbExecutor`, so the same function
+works inside or outside a transaction — see `../db/DB_CONTEXT.md`.
+
+## The WebSocket push channel
+
+One socket per authenticated user, running in the opposite direction from the chat socket it
+replaces. It reuses the `@fastify/websocket` plugin already registered in `server.ts` — only the
+route changes:
+
+- **Authenticate at the handshake** — the cookie rides along with the WS upgrade. Reject
+  unauthenticated upgrades with a close code. Validate `Origin` too: a cross-site page must not be
+  able to open an authenticated socket.
+- **The channel is derived server-side** from the authenticated user id. The client never names it,
+  so there is no path parameter to forge and no per-message ownership check to get wrong.
+- **Server → client only.** The client sends nothing; every user action is a REST call. This is a
+  notification bus, not an RPC transport.
+- **Typed data events**, not text — `inventory.upserted`, `inventory.deleted`, `cart.updated`,
+  `notification.created`.
+
+It exists because two different things change rows the user is looking at: their own
+interpret-and-commit calls, and background reorder runs with no request in flight at all. One
+delivery path covers both.
+
+**Treat it as best-effort.** Every view is fetchable over REST, so a dropped socket leaves the UI
+stale until the next fetch rather than broken. Never make a write's correctness depend on a push
+being delivered — the frontend has no reconnect logic yet, and Cloud Run caps socket lifetime at an
+hour regardless.
 
 ## Dependencies
 
-Both files import `db` directly from `db/client.ts` and delegate all queries to `db/repositories/`. Neither builds SQL itself.
+Route files import `db` directly from `db/client.ts` and delegate all queries to `db/repositories/`.
+None builds SQL itself.
 
-`websocket.ts` also depends on `agent/index.ts` for LLM streaming — it is the only file in this folder that touches the agent layer.
+Routes that interpret natural language also depend on `agent/` — that dependency runs one way, and
+the agent layer never reaches back into the database.
 
 ## Adding a new endpoint
 
-Create a new file exporting a `FastifyPluginAsync`, then register it in `server.ts` with `app.register(...)`.
+Create a new file exporting a `FastifyPluginAsync`, then register it in `server.ts` with
+`app.register(...)`. If it takes natural-language input, follow the interpret flow above and state
+its commit pattern in the PRD section for that module.

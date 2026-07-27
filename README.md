@@ -1,16 +1,32 @@
 # Salamander
 
-A shopping agent — a chat web app where you describe what you want to buy and Claude
-streams back suggestions in real time.
+A shopping agent. It tracks what you own and, when stock runs low, assembles a
+ready-to-checkout cart for you to place. The app never completes a checkout.
 
-This is Phase 1: LLM connectivity, WebSocket streaming, and session persistence. No
-auth, no external search APIs, no payments. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for architecture, data model, and
-deployment, and [`docs/PRD.md`](docs/PRD.md) for the product roadmap.
+**By design, there is no chatbot.** The LLM is an *interpreter*: wherever the app
+needs structured data, you type a plain sentence and the model turns it into the
+record the server stores.
+
+```
+"Add 1984 to my Books"  →  { category: "Books", name: "1984", … }  →  saved  →  pushed to the UI
+```
+
+Every model call is single-turn, non-streaming, and returns structured output —
+never prose shown to a user. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for what ships when.
+
+> **Current state: the Phase 1 chat app is still what runs.** The interpreter
+> model above is the *target*, not the code. What exists today is a streaming chat
+> assistant — `sessions` + `messages` tables, `POST /sessions`, and a
+> token-streaming WebSocket — on a foundation of Fastify, Postgres/Drizzle with
+> startup migrations, and the Anthropic SDK. **Removing that chat surface is the
+> next work**, ahead of roadmap Phase 1 (accounts + inventory). See
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*.
 
 | Piece | Stack | Local URL |
 |---|---|---|
-| `frontend/` | React + Vite + TypeScript + Tailwind | http://localhost:5173 |
+| `frontend/` | React + Vite + TypeScript | http://localhost:5173 |
 | `node-server/` | Node 20 + TypeScript + Fastify + Drizzle | http://localhost:8000 |
 | PostgreSQL 16 | installed natively | localhost:5432 |
 | `py-server/` | Legacy Python/FastAPI backend — superseded, kept for reference | — |
@@ -62,16 +78,16 @@ npm install
 npm run dev
 ```
 
-Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it applies
-any pending migrations from `drizzle/`, so the `sessions` and `messages` tables are
-created automatically on the first run.
+Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it
+applies any pending migrations from `drizzle/`, creating the `sessions` and
+`messages` tables on a first run.
 
 Verify:
 
 ```bash
 curl -X POST http://localhost:8000/sessions \
   -H 'Content-Type: application/json' -d '{}'
-# {"id":"...","title":"New Session","created_at":"2026-07-22T..."}
+# {"id":"...","title":"New Session","created_at":"..."}
 ```
 
 ### 3. Frontend
@@ -85,9 +101,9 @@ npm run dev
 
 Open **http://localhost:5173**.
 
-> **The frontend `.env` is not optional.** `useWebSocket.ts` falls back to
-> `ws://192.168.1.103:8000` — a LAN address from a previous dev machine — so without
-> `VITE_WS_URL` set, REST calls succeed but the chat silently never connects.
+> **The frontend `.env` is not optional.** `VITE_WS_URL` falls back to a LAN
+> address from a previous dev machine, so leaving it unset gives you working REST
+> calls and a chat that silently never connects.
 
 ---
 
@@ -99,13 +115,13 @@ Open **http://localhost:5173**.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required. Read automatically by the Anthropic SDK |
 | `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping` |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS — must name the origin exactly, no wildcards |
 | `PORT` | `8000` | Cloud Run sets this automatically in production |
 | `HOST` | `0.0.0.0` | |
 
 `DATABASE_URL` takes a plain `postgresql://` scheme. The old
-`postgresql+asyncpg://` form was SQLAlchemy-specific; the server strips the suffix if
-it finds one, but new config should not include it.
+`postgresql+asyncpg://` form was SQLAlchemy-specific; the server strips the suffix
+if it finds one, but new config should not include it.
 
 ### `frontend/.env`
 
@@ -120,36 +136,50 @@ Both are read at build time by Vite. Restart `npm run dev` after changing them.
 
 ## API
 
-**`POST /sessions`** — create a session.
+### Today (chat app — to be removed)
+
+**`POST /sessions`** — create a chat session.
 
 ```jsonc
-// request
-{ "title": "Laptop hunt" }   // title optional; defaults to "New Session"
+// request  — title optional, defaults to "New Session"
+{ "title": "Laptop hunt" }
 // response 200
 { "id": "<uuid>", "title": "Laptop hunt", "created_at": "<ISO 8601>" }
 ```
 
-**`GET /sessions/{session_id}/history`** — messages for a session, oldest first.
-Returns `404` if the session does not exist.
-
-```jsonc
-[{ "id": "<uuid>", "role": "user", "content": "...", "created_at": "<ISO 8601>" }]
-```
+**`GET /sessions/{session_id}/history`** — messages oldest first; `404` if the
+session does not exist.
 
 **`WS /ws/{session_id}`** — one frame per user turn:
 
 ```jsonc
 // client → server
 { "message": "I need a laptop under $800" }
-
 // server → client
 { "type": "chunk", "text": "..." }   // one per streamed chunk
 { "type": "done" }                    // end of the assistant turn
 { "type": "error", "message": "Session not found" }
 ```
 
-The connection is long-lived and stays open across turns — including after an
-`error` frame.
+### Replacing it
+
+All three endpoints go away with the chat app
+([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*), along
+with the `sessions`/`messages` tables. A `GET /health` gets added in the same
+change so the service stays verifiable while it has no other routes.
+
+The routes that replace them — auth, inventory, and the per-user WebSocket push
+channel — are specified in [`docs/PRD.md`](docs/PRD.md) §7 and sequenced in
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+Two conventions those routes will follow, worth knowing before you add one:
+
+- **Natural-language input goes to a route, not a socket.** A text input POSTs to
+  a REST endpoint that interprets, validates with zod, and commits (or returns a
+  draft — the choice is per module, see PRD §5.0).
+- **The WebSocket is server→client only.** It carries typed data events
+  (`inventory.upserted`, `cart.updated`, …) so the UI can update live. It is
+  best-effort; REST remains the source of truth.
 
 ---
 
@@ -182,8 +212,9 @@ sudo -u postgres psql -c "DROP DATABASE shopping;"   # nuke and re-run migration
 
 ## Deployment
 
-Target is Cloud Run + Cloud SQL. `docs/ARCHITECTURE.md` has the full picture; two
-things matter enough to repeat here.
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) is the as-built runbook — Cloud Run for
+the backend, PostgreSQL on a Compute Engine VM reached over Direct VPC egress, and
+Firebase Hosting for the frontend. Two things matter enough to repeat here.
 
 **Deploys build from source — no Docker.** Cloud Run builds the image from the
 source tree with Cloud Buildpacks; there is no Dockerfile to maintain and no local
@@ -193,25 +224,31 @@ Docker to install. The only CLI you need is `gcloud`:
 gcloud run deploy salamander-server --source .
 ```
 
-**WebSockets need two non-default Cloud Run flags on the backend service:**
+**Long-lived WebSockets need non-default Cloud Run flags** — today's chat socket
+and the push channel that replaces it both:
 
 ```bash
 gcloud run deploy salamander-server --source . \
-  --session-affinity \    # keep a session's requests on one instance
-  --timeout=3600          # max socket lifetime; the 300s default drops idle chats
+  --session-affinity \    # keep a user's requests on one instance
+  --timeout=3600          # max socket lifetime; the 300s default drops idle sockets
 ```
 
-Without `--timeout`, a user who reads for five minutes before replying gets
-disconnected. Session affinity is best-effort — a scale-down still cuts live
-sockets, and the frontend currently has no reconnect logic (see
-`docs/ARCHITECTURE.md` → *Known gaps*).
+Session affinity is best-effort — a scale-down still cuts live sockets, and the
+frontend has no reconnect logic (see `docs/ARCHITECTURE.md` → *Known gaps*). That
+matters less once the push channel lands: because it is an optimization rather
+than the source of truth, a dropped socket will leave the UI stale until the next
+fetch rather than broken. On today's chat socket, a drop loses the response
+mid-sentence.
 
 ---
 
 ## Troubleshooting
 
-**Chat UI loads but messages never send.** `VITE_WS_URL` is unset, so the socket is
-pointed at the stale default LAN IP. Set it in `frontend/.env` and restart Vite.
+**Chat UI loads but messages never send.** `VITE_WS_URL` is unset, so the socket
+points at the stale default LAN IP. Set it in `frontend/.env` and restart Vite.
+
+**Chat dies after a few minutes idling in a deployed environment.** Cloud Run's
+request timeout is capping the WebSocket. See [Deployment](#deployment).
 
 **Backend exits with `DATABASE_URL is not set`.** You skipped
 `cp .env.example .env`, or you're running from the repo root instead of
@@ -220,20 +257,17 @@ pointed at the stale default LAN IP. Set it in `frontend/.env` and restart Vite.
 **`ECONNREFUSED 127.0.0.1:5432` on boot.** Postgres isn't running — start it with
 `sudo systemctl start postgresql`.
 
-**`password authentication failed for user "postgres"`.** A fresh `apt` install uses
-peer auth with no password set — run the `ALTER USER postgres PASSWORD 'postgres';`
-line from step 1.
-
-**Chat dies after a few minutes of idling in a deployed environment.** Cloud Run's
-request timeout is capping the WebSocket. See [Deployment](#deployment).
+**`password authentication failed for user "postgres"`.** A fresh `apt` install
+uses peer auth with no password set — run the
+`ALTER USER postgres PASSWORD 'postgres';` line from step 1.
 
 **`401` from the Anthropic API.** `ANTHROPIC_API_KEY` is missing or still the
-placeholder from `.env.example`. REST calls will keep working; only the WebSocket
-turn fails.
+placeholder from `.env.example`. REST calls keep working; only the streamed turn
+fails.
 
-**`npm install` warns `EBADENGINE ... required: node >=20`.** That's `drizzle-kit`, a
-dev-only dependency. The server itself runs on 18; you only need Node 20 to
-regenerate migrations.
+**`npm install` warns `EBADENGINE ... required: node >=20`.** That's
+`drizzle-kit`, a dev-only dependency. The server itself runs on 18; you only need
+Node 20 to regenerate migrations.
 
 ---
 
@@ -242,9 +276,11 @@ regenerate migrations.
 ```
 project-salamander/
 ├── node-server/    backend — see src/{db,api,agent}/*_CONTEXT.md for design notes
-├── frontend/       React chat UI
+├── frontend/       React SPA (chat UI today; to be replaced)
 ├── py-server/      legacy Python backend, superseded by node-server
 └── docs/
     ├── ARCHITECTURE.md   architecture, data model, runtime flows, deployment
-    └── PRD.md            forward-looking product roadmap
+    ├── PRD.md            product spec for the shopping agent
+    ├── ROADMAP.md        phased delivery plan
+    └── DEPLOYMENT.md     as-built GCP runbook
 ```

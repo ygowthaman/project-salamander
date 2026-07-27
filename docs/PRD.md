@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft / not started. This document turns `docs/IDEAS.md` (the product vision) into an
+Draft / not started. **The chat-app removal this document assumes has not happened yet** — the code
+is still the Phase 1 chat app (see §3.5 and `ARCHITECTURE.md` → *Removing the chat app*). This document turns `docs/IDEAS.md` (the product vision) into an
 implementable PRD, and adds the accounts, authentication, and session layer that the vision
 assumes but does not yet specify. It is self-contained so a fresh Claude Code session can pick up
 the work without re-reading the originating conversation.
@@ -10,7 +11,7 @@ the work without re-reading the originating conversation.
 Read order for context:
 1. This file.
 2. `docs/IDEAS.md` — the raw product vision this PRD formalizes.
-3. `ARCHITECTURE.md` — the architecture of the shipped Phase 1 chat app.
+3. `ARCHITECTURE.md` — the architecture of the shipped backend foundation.
 4. The `*_CONTEXT.md` files under `node-server/src/` — why the current code is shaped the way it is.
 
 > **Note on the two "PRD" files.** The root `PRD.md` documents the *completed* Python→Node
@@ -21,18 +22,47 @@ Read order for context:
 
 ## 1. Overview
 
-Salamander is evolving from a **chat-based shopping assistant** (Phase 1, shipped) into a
-**shopping agent** that tracks a user's inventory and, when stock runs low, prepares the reorder
-through a third-party shopping service (e.g. Instacart) — guided by user-defined rules and an LLM
-for judgment calls.
+Salamander is a **shopping agent** that tracks a user's inventory and, when stock runs low, prepares
+the reorder through a third-party shopping service (e.g. Instacart) — guided by user-defined rules
+and an LLM for judgment calls.
 
 **The domain is general inventory, not just groceries.** Categories are arbitrary and user-defined —
 groceries, office supplies (printer ink, paper), household goods, or anything else. And the
 **reordering machinery is opt-in**: a user who only wants to *track* what they own (e.g. a book
 collection) can add items and never create a mandate, grant, budget, or schedule. In that mode the
-app is a pure inventory catalog with a chat assistant that can answer *"do I already own this?"*
-(§5.8) — useful when you're standing in a store. Everything below supports both the full
+app is a pure inventory catalog with a natural-language search box that answers *"do I already own
+this?"* (§5.8) — useful when you're standing in a store. Everything below supports both the full
 reorder flow and this track-only mode; the difference is simply whether the user sets up mandates.
+
+### The role of the LLM — an interpreter, not a conversationalist
+
+**There is no chatbot. The user never holds a conversation with the model.** The LLM sits behind the
+UI as a **translation layer**: wherever the app needs structured data, the user types a plain
+sentence and the model converts it into the DTO the server persists.
+
+```
+plain text → LLM interprets → DTO → server validates + commits → WS push → UI updates
+```
+
+Concretely: the user types *"Add 1984 to my Books"* into the inventory input; the model returns
+`{ category: "Books", name: "1984", … }`; the server validates it with zod, writes the row, and
+pushes the new record over that user's WebSocket; the UI clears the input box and the entry appears
+in the table. One shot — no dialogue, no streaming, no conversation history.
+
+This is the **primary and near-universal LLM usage in the application**. Every place the model
+appears, it is doing one of four jobs:
+
+| Use | Input | Output |
+|---|---|---|
+| **Interpretation** (§8.1) — the dominant case | free text + target schema + context | a structured DTO the server commits |
+| **Search interpretation** (§8.2) | free text | a structured inventory query the server runs |
+| **Selection** (§5.10) | provider candidates + a grant | which product goes on a line item |
+| **Judgment** (§5.6) | a grant miss + budget headroom | one action from a fixed set |
+
+All four are **single-turn, non-streaming, structured-output** calls. None returns prose to the
+user; none carries conversation state. Consequences that run through this whole document: there is
+no chat session and no `messages` table, no token streaming, and the WebSocket carries **data
+updates, not tokens**.
 
 **Scope of this PRD — assisted, not autonomous.** When mandates fire, the agent resolves products,
 respects grants and budgets, **assembles a ready-to-checkout cart, and notifies the user that an
@@ -41,14 +71,14 @@ never completes a checkout on the user's behalf in this scope. **Fully autonomou
 the agent placing the order itself — is a stretch goal** (§9.1), deferred until the assisted flow is
 proven and the §5.11 safeguards are in place.
 
-The shipped Phase 1 already provides the foundation this PRD builds on: Node/Fastify backend,
-Postgres + Drizzle, Claude streaming over WebSockets, and a React/Vite frontend. This PRD adds
-three things on top of that foundation:
+The shipped foundation this PRD builds on: a Node/Fastify backend, Postgres + Drizzle with startup
+migrations, the Anthropic SDK wired up, and a React/Vite frontend. This PRD adds three things on top
+of it:
 
 - **Accounts, authentication, and sessions** — so data belongs to a user and the agent can act
   on that user's behalf. (New requirement; not in `IDEAS.md`.)
 - **The inventory & shopping domain** — inventory (across arbitrary categories, reorder optional),
-  an inventory-aware chat assistant, mandates, grants, budgets, the reorder scheduler, the LLM
+  natural-language inventory search, mandates, grants, budgets, the reorder scheduler, the LLM
   fallback decision, cart assembly, notifications, and the shopping-provider integration. (From
   `IDEAS.md`, scoped to assisted cart-building rather than autonomous checkout.)
 - **A revised data model and API surface** that ties every domain object to an owning user.
@@ -59,7 +89,9 @@ three things on top of that foundation:
 |---|---|---|
 | Authentication | **Self-hosted email + password, JWT session cookie** | Full control, no third-party dependency, credentials live in the Postgres we already run. Cost of ownership (reset/verification) accepted. |
 | Multi-user model | **Single user per account** | Each account owns its own inventory/mandates/orders. Household sharing is explicitly deferred (see Non-goals + Future phases). |
-| Input model | **Natural-language-first: free-text → LLM parse → confirm-before-commit** for inventory stock updates, inventory item definitions, mandates, and grants. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `current_stock`); the parsed draft is shown for approval/edit before persisting. |
+| LLM role | **Interpreter only — no conversational surface anywhere in the app** | The model turns free text into DTOs (and picks products / makes bounded judgment calls). It never holds a dialogue, never streams prose to the user, and carries no conversation state. This removes chat sessions, the `messages` table, and token streaming from the design entirely. |
+| Input model | **Natural-language-first**: free text → LLM interpret → DTO — for inventory stock updates, item definitions, mandates, grants, and search. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `current_stock`). |
+| Commit policy | **Decided per module, not globally.** Two supported patterns: **direct commit** (interpret → validate → write → push) and **confirm-before-commit** (interpret → show draft → user approves → write). | Low-stakes, high-frequency edits favour direct commit; anything that drives real spending favours the confirm gate. The right trade-off differs per module, so each module states its choice when it is built (§5.0). |
 | Stored trigger form | **Structured `{op, field, value}`** | The scheduler must evaluate triggers deterministically; the free text is only the LLM's input, never what runs. |
 | Spend limits | **Two-tier: per-item grants + per-period/category budgets** | A grant bounds one purchase ("eggs ≤ $5"); a budget bounds cumulative category spend over a period ("groceries ≤ $500/month"). Budget headroom is what makes grant overrides meaningful. |
 | Ordering model | **Assisted: agent builds the cart, user places the order manually** | The agent assembles a ready-to-checkout cart and notifies the user; the user does the actual checkout. The app never auto-completes a purchase in this scope. Autonomous placement is a stretch goal (§9.1). |
@@ -67,20 +99,17 @@ three things on top of that foundation:
 
 ---
 
-## 2. Terminology — the two meanings of "session"
+## 2. Terminology
 
-"Session" is overloaded in this codebase. This PRD always qualifies it:
-
-- **Chat session** — an existing row in the `sessions` table: one conversation thread between a
-  user and the shopping assistant (`sessions` + `messages`, per Phase 1). Renamed in prose to
-  *chat session* wherever ambiguity is possible; the table name stays `sessions` for
-  backward-compatibility.
-- **Auth session** (a.k.a. login session) — a *new* concept: an authenticated browser session,
-  represented by a signed JWT delivered in an httpOnly cookie, optionally backed by a
-  server-side refresh-token record for revocation.
-
-When this document says "session" unqualified inside the auth chapter, it means an **auth
-session**; everywhere else it means a **chat session**.
+- **Session** — always an **auth session**: an authenticated browser session, represented by a
+  signed JWT in an httpOnly cookie and backed by a server-side refresh-token record for revocation
+  (§3.3). This becomes the *only* meaning of "session" in the codebase once the Phase 1 **chat
+  session** (a `sessions` + `messages` conversation thread) is **removed** along with the chatbot —
+  see §3.5. Until then both meanings are live in the code, so keep qualifying which one you mean.
+- **Interpretation** — a single-turn LLM call that converts free user text into a structured DTO,
+  validated against a zod schema (§8.1). The app's primary use of the model.
+- **Direct commit** vs **confirm-before-commit** — the two commit patterns an interpreting endpoint
+  may use (§5.0). Chosen per module, not globally.
 
 ---
 
@@ -89,7 +118,7 @@ session**; everywhere else it means a **chat session**.
 ### 3.1 Goals
 
 - A person can sign up, log in, and log out.
-- Every domain object (chat sessions, inventory, mandates, orders, notifications) belongs to
+- Every domain object (inventory, mandates, grants, budgets, orders, notifications) belongs to
   exactly one user and is invisible to all others.
 - The autonomous scheduler and LLM fallback act **as** a specific user, scoped to that user's
   data and autonomy settings.
@@ -147,12 +176,13 @@ invalidates all outstanding access tokens — acceptable given the refresh flow.
 - **REST**: a Fastify `preHandler`/auth plugin reads the cookie, verifies the JWT, loads
   `request.user`. Unauthenticated requests to protected routes → 401. `/auth/signup` and
   `/auth/login` are the only fully public routes.
-- **WebSocket**: authenticate at the **handshake** (the cookie is sent with the WS upgrade
-  request). Reject the upgrade with a close code if unauthenticated. On every incoming WS message,
-  verify the target chat session's `user_id` matches `request.user.id` before doing any work —
-  never trust the `session_id` in the path alone.
+- **WebSocket**: the socket is a **per-user push channel** (§8.4), not a request/response surface.
+  Authenticate at the **handshake** — the cookie is sent with the WS upgrade request — and reject
+  the upgrade with a close code if unauthenticated. The channel a connection is subscribed to is
+  derived **server-side** from `request.user.id`; it is never named by the client, so there is no
+  path parameter to forge and no per-message ownership check to get wrong.
 - **Ownership checks**: every repository read/write is scoped by `user_id`. A user requesting
-  another user's `session_id`/`mandate_id` gets a 404 (not 403 — don't confirm existence).
+  another user's `inventory_item_id`/`mandate_id` gets a 404 (not 403 — don't confirm existence).
 - **CSRF protection**: because auth is a **cookie** the browser attaches automatically, every
   state-changing request needs CSRF defense — otherwise a malicious site could trigger authenticated
   mutations. Layered approach:
@@ -168,11 +198,20 @@ invalidates all outstanding access tokens — acceptable given the refresh flow.
 
 ### 3.5 Impact on existing Phase 1 code
 
-- `sessions` gains `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE` — via a new
-  migration. Existing rows (dev data) may need a backfill or a clean reset; document in the
-  migration notes.
-- `POST /sessions` derives `user_id` from `request.user`, not from the body.
-- `GET /sessions/{id}/history` and the WS handler add ownership checks.
+The chatbot is to be removed, so this is a subtraction before it is an addition. **None of it has
+happened yet** — this is the prerequisite work, not a description of the current tree:
+
+- **`sessions` and `messages` get dropped** — both tables, their repositories, `POST /sessions`,
+  `GET /sessions/{id}/history`, and the token-streaming WebSocket handler. There is no chat session
+  to add a `user_id` to; the concept goes away rather than being migrated. A drop migration
+  handles existing dev
+  data.
+- **The agent layer is repurposed, not deleted** — `src/agent/` stops being a streaming chat
+  generator and becomes the home of the single-turn **interpretation** functions (§8.1). The
+  Anthropic client, the `ANTHROPIC_API_KEY` wiring, and the prompt-caching approach carry over.
+- **The WebSocket is repurposed too** — from a per-chat-session token stream to a **per-user data
+  push channel** (§8.4). Same `@fastify/websocket` plugin, entirely different payload: rows and
+  deltas, not tokens.
 - Frontend gains signup/login/logout screens and an auth guard; API/WS calls rely on the cookie
   being sent automatically (`credentials: 'include'` / cookie on WS upgrade). CORS must allow
   credentials for the specific frontend origin (wildcards are incompatible with credentialed
@@ -219,26 +258,54 @@ Table-stakes account management for a shippable app (data export is explicitly *
 
 ### 5.0 Input model — natural language by default, forms only where they fit
 
-**Natural-language text is the primary interaction** across the app. The user types plain sentences
-into a textarea; the backend calls the LLM to **parse them into the structured JSON the app stores**,
-validates the result, shows the parsed draft for approval, and commits on confirm. This applies to:
+**Natural-language text is the primary interaction** across the app. The user types a plain sentence
+into an input box; the backend calls the LLM to **interpret it into the structured DTO the app
+stores**, validates that DTO with zod, and persists it. This applies to:
 
+- **Inventory item definitions** (§5.1) — *"Add 1984 to my Books"*, *"start tracking eggs, a dozen is normal"*.
 - **Inventory stock updates** (§5.1) — *"low on eggs and milk, out of bread"*.
-- **Inventory item definitions** (§5.1) — *"start tracking eggs, a dozen is normal"*.
+- **Inventory search** (§5.8) — *"do I have the LOTR special edition?"*.
 - **Mandates** (§5.2) — *"buy eggs when we're low"*.
 - **Grants** (§5.3) — *"only if they're under $5"*.
 
 The user never hand-fills a trigger condition, a grant constraint, or a stock count — the LLM does
-the translation, and the confirm step (a pre-filled, editable view of the parsed fields) is where any
-correction happens.
+the translation. There is **no conversation**: each input is one shot, and the response is updated
+data in the UI, never a reply from a model.
 
 **Structured forms are reserved for the few genuinely bounded, high-stakes inputs** where prose adds
 nothing and precision matters: **account creation** (email, password — §3) and **budgets** (name,
-amount, category, period — §5.4; NL is an option there per §12). Everything the confirm step surfaces
-is itself an editable form, so "forms vs. NL" is really "NL-first with a form as the safety net."
+amount, category, period — §5.4; NL is an option there per §12).
 
-§5.1–5.3 and §8.1 describe how the parse → validate → confirm → commit flow works and how it fails
-safely.
+#### The two commit patterns
+
+Interpreted input reaches the database one of two ways. **Which one a module uses is a per-module
+decision** (locked, §1) — this PRD does not impose a single rule:
+
+| | **Direct commit** | **Confirm-before-commit** |
+|---|---|---|
+| Flow | text → interpret → validate → **write** → WS push → UI updates | text → interpret → validate → **draft** → user reviews/edits → write |
+| Round trips | one | two (`/…/parse`, then the create route) |
+| Persists on a misread | yes — corrected after the fact by editing | no — nothing is written until the user accepts |
+| Suits | high-frequency, low-stakes, easily-reversed edits | anything that drives real spending, or is tedious to undo |
+
+Both patterns share the same interpretation core (§8.1) — the same extraction function, the same zod
+schema, the same failure handling. The only difference is whether a draft is surfaced before the
+write. That means a module can **switch patterns later without re-plumbing anything**: adding a
+confirm gate is adding a `/parse` route and a UI step, not a redesign.
+
+Rules of thumb, applied per module as it is built:
+
+- Prefer **direct commit** where a mistake costs one correcting sentence — inventory adds and stock
+  updates are the canonical case, and the whole point of the *"Add 1984 to my Books"* flow is that
+  it is one action, not two.
+- Prefer **confirm-before-commit** where a misread silently spends money or is hard to notice —
+  mandates and grants (a wrong trigger threshold buys the wrong thing next window), and the cart.
+- Regardless of pattern, **nothing is persisted from a failed or low-confidence interpretation**
+  (§8.1) — that gate is not what "direct commit" removes.
+
+Each module's §5 subsection records the choice it makes and why; `ROADMAP.md` records it per phase.
+
+§5.1–5.3, §5.8 and §8.1 describe how interpretation works and how it fails safely.
 
 ### 5.1 Inventory management
 
@@ -248,8 +315,8 @@ useful on their own: a user can maintain a **track-only** catalog (e.g. books th
 mandate, grant, budget, or schedule attached, and never enter the reorder flow at all. `par_level`
 and any mandate are optional per item. For non-consumables that carry richer metadata (a book's
 author/edition/ISBN, an ink cartridge's model number), an optional `attributes` field (§6) holds
-those key/values so the chat assistant can match a fuzzy query like *"the LOTR special edition"* to
-the right row (§5.8).
+those key/values so natural-language search can match a fuzzy query like *"the LOTR special
+edition"* to the right row (§5.8).
 
 The daily reality (for the consumable/reorder case): a user will **not** open a form and type "6"
 into an egg-count field every day.
@@ -283,11 +350,20 @@ dozen is normal"*); the LLM infers `category`, `unit`, a sensible `par_level`, a
 is what an item's stock is set to when a reorder for it is placed (§5.9) — e.g. eggs → `12`, bread →
 `1`. (A plain form is a fine alternative for precise first-time setup, but is not the expected path.)
 
-**Confirm-before-commit and failure handling.** The parsed draft is shown as a per-item diff
-(*"Eggs 6 → 1 (low), Milk 4 → 1 (low), Bread 2 → 0 (out)"*) for the user to approve or adjust before
-anything is written — nothing is committed on a guess. An item name the LLM can't resolve to a
-tracked item is **surfaced, not invented**: the confirm step offers to add it as a new item (or the
-user drops it). See §8.1.
+**Commit pattern — direct commit (§5.0).** Inventory adds and stock updates write straight through:
+interpret → validate → persist → push the updated rows over the user's WebSocket → the UI clears the
+input box and refreshes the table. No draft, no approval step. This is the module where the one-shot
+flow matters most: it is the everyday interaction, and a misread costs exactly one correcting
+sentence (*"no, 2 eggs not 12"*) or a precise `/inventory/{id}/adjust`. The UI still surfaces the
+LLM's interpretation as a per-item old→new diff (*"Eggs 6 → 1 (low), Milk 4 → 1 (low), Bread 2 → 0
+(out)"*) — just **after** the write rather than as a gate before it, so the user can see and correct
+it immediately.
+
+**Failure handling is unchanged by that choice.** A failed or low-confidence interpretation still
+persists **nothing** (§8.1) — direct commit removes the approval step, not the validation gate. An
+item name the LLM can't resolve to a tracked item is **surfaced, not invented**: the response reports
+the unresolved name and offers to add it as a new item, rather than silently creating or guessing
+one.
 
 **Precise edits remain available.** A structured `POST /inventory/{id}/adjust` (set absolute /
 increment / decrement) stays for exact or programmatic updates; the NL path is what the user reaches
@@ -311,9 +387,9 @@ the window flow. Outside an open window the update just records the number.
 - The parsed result is validated with zod against the mandate/grant schema before commit. On a
   low-confidence or unparseable input, the backend returns what it understood (or an error) so the
   UI can ask the user to rephrase or edit — it never guesses a trigger it isn't confident about.
-  The parsed draft is **shown to the user for approval/edit before it is committed**
-  (confirm-before-commit; locked decision, §1) — mandates drive real spending, so nothing persists
-  until the user accepts the draft.
+  The parsed draft is **shown to the user for approval/edit before it is committed** — this module
+  uses the **confirm-before-commit** pattern (§5.0), because mandates drive real spending and a
+  misread threshold is not self-evident until it buys the wrong thing.
 - Mandates are viewable, editable, deletable, and enable/disable-able. Editing may re-run the
   textarea → parse flow, or (recommended) allow direct field edits on the already-parsed mandate.
 - Multiple mandates per item allowed (future-friendly; not required in first cut).
@@ -326,8 +402,8 @@ to many mandates, and edited in one place.
 
 Grants are **created from natural-language text** too — either inline as part of a mandate sentence
 (§5.2), or standalone by typing a constraint into a textarea (e.g. *"never spend more than $5, prefer
-the store brand"*), which the LLM extraction step (§8.1) parses into the fields below. The same
-validate-and-confirm-before-commit flow as mandates applies (§1 locked decision).
+the store brand"*), which the LLM extraction step (§8.1) parses into the fields below. Grants use the
+same **confirm-before-commit** pattern as mandates (§5.0), for the same reason — they bound spending.
 - Fields the extraction produces (all scoped to the authenticated user):
   - **`name`** — human label (e.g. "Cheap staples").
   - **`max_price`** — price ceiling for the purchase (nullable = no cap).
@@ -465,25 +541,44 @@ triggered by an inventory update mid-window does **not** fire a fresh "cart read
 would be noisy); the cart badge/count updates live, and only the initial open and the expiry
 reminder are push-notified — how chatty re-runs should be is an open decision (§12).
 
-### 5.8 Chat assistant (retained + inventory-aware)
-The Phase 1 conversational assistant remains, now authenticated and user-scoped. **It gains access
-to the user's inventory** so it can answer questions about what they own — the canonical case being,
-while standing in a store: *"Do I have the Lord of the Rings special edition book?"* or *"Am I low
-on printer ink?"*
+### 5.8 Natural-language inventory search
 
-- The agent is given an **inventory-lookup tool** (§8.2). When a message needs it, the LLM calls the
-  tool, which queries the user's `inventory_items` (scoped by `user_id`), and the LLM answers from
-  the returned rows — including current stock, category, and `attributes` (author/edition/etc.).
-- Matching is **fuzzy and semantic**: *"LOTR special edition"* should resolve to a stored
-  *"The Lord of the Rings — Illustrated Special Edition"* even without an exact string match. The
-  tool returns candidate rows (by keyword/category) and the LLM disambiguates; if nothing matches it
-  says so plainly (*"you don't have that tracked"*), optionally offering to add it.
-- This is what makes the **track-only** mode (§5.1) genuinely useful without any reorder setup: add
-  your books/supplies, then just ask.
-- Scope guard: the lookup is **read-only over the asking user's own inventory** — never another
-  user's, and it does not place orders or edit data. (Letting chat *update* stock or *create*
-  mandates conversationally is a natural extension but is left to the dedicated NL flows in
-  §5.1–5.3 for now.)
+A **search box, not a chat window.** The user types a question about what they own and gets back
+**matching inventory rows** — the same table the rest of the app renders, filtered. The canonical
+case is standing in a store: *"do I have the Lord of the Rings special edition?"* or *"am I low on
+printer ink?"*
+
+This is the same interpreter pattern as everywhere else (§5.0), with a query DTO instead of a write
+DTO, and a result set instead of a commit:
+
+```
+"do I have the LOTR special edition?"
+  → interpret → { keywords: ["lord of the rings", "LOTR", "tolkien"], category: "Books",
+                  attribute_hints: { edition: "special" } }
+  → server queries the user's inventory with that DTO (scoped by user_id)
+  → UI renders: 1 result — "The Lord of the Rings — Illustrated Special Edition", Books, qty 1
+```
+
+**One LLM call, then a database query.** The model turns the sentence into a query and stops; the
+server does the lookup. Fetched rows are never sent back to the model (§8.2) — which is why a search
+costs the same whether the user tracks 5 items or 5,000.
+
+- **Matching is fuzzy because the *DTO* is fuzzy**, not because a second pass cleans up after the
+  query. Interpretation **expands** — *"LOTR"* becomes `["lord of the rings", "LOTR", "tolkien"]` —
+  so ordinary SQL finds the stored *"The Lord of the Rings — Illustrated Special Edition"* with no
+  exact string overlap. How far the SQL side goes (`ILIKE` → `pg_trgm` → full-text) is §12.20.
+- **The output is data, not prose.** The response is `inventory_item` rows the UI renders in its
+  normal table, plus a deterministic, server-generated status line (*"2 matches"* / *"nothing
+  tracked matching that"*). Several plausible rows is a good search result, not a failure to
+  disambiguate — the user reads the table. There is no reply bubble and nothing to stream.
+- **Stateless.** Each search is independent — no history, no follow-up turns. Refining a search
+  means typing a new sentence, exactly like re-typing in any search box.
+- This is what makes **track-only** mode (§5.1) genuinely useful with no reorder setup: add your
+  books or supplies, then search them in plain language.
+- **Scope guard:** search is **read-only over the asking user's own inventory**. `user_id` is bound
+  server-side from the auth session and never taken from the model or the request body, so a query
+  cannot reach another user's rows. It writes nothing and orders nothing — adding and updating stay
+  on the dedicated write flows (§5.1–5.3).
 
 ### 5.9 Proposed order (cart) review & manual placement
 - A window's proposed order is a persisted cart: line items (product, quantity, unit price), a
@@ -520,8 +615,10 @@ product out of many. Recommended approach:
   1. `ShoppingProvider.search(shopping_query)` returns a **ranked list of candidate products** (name,
      brand, size, price, availability) — not a single guess.
   2. The **LLM selects** the best candidate given the mandate's `shopping_query` and its grant
-     (brand/vendor/price/quantity), the same disambiguation pattern used for chat lookup (§8.2) and
-     the fallback (§5.6). It records a short rationale on the line item.
+     (brand/vendor/price/quantity) — the same judgement pattern as the fallback (§5.6). Note this
+     is the one place candidates *are* sent to the model, unlike search (§8.2), because picking
+     against a grant is not expressible as a query. It is bounded by provider result count, not by
+     anything the user accumulates. It records a short rationale on the line item.
   3. **Remember the choice per mandate**: store the selected product ref on the mandate
      (`preferred_product`, §6). Next run, prefer that product if still available/within grant and
      skip re-selection — matching gets more accurate and cheaper over time, and stays stable
@@ -562,11 +659,8 @@ auth_sessions
   id, user_id → users(id), refresh_token_hash, user_agent, ip,
   expires_at, created_at, revoked_at
 
-sessions                       -- chat sessions (existing; + user_id)
-  id, user_id → users(id), title, created_at
-
-messages                       -- existing, unchanged
-  id, session_id → sessions(id) ON DELETE CASCADE, role, content, created_at
+-- NOTE: the Phase 1 `sessions` and `messages` tables are to be DROPPED (§3.5). There is no chat
+--   session and no conversation history to store; the LLM is stateless per call (§1).
 
 inventory_items
   id, user_id → users(id), name, category, unit (nullable),
@@ -670,21 +764,23 @@ PATCH  /auth/me               { display_name?, email? }           → update pro
 POST   /auth/change-password  { current_password, new_password }  → revokes other sessions
 DELETE /auth/me               { password }                        → hard-delete account (cascades)
 
-# Chat (existing, now user-scoped)
-POST   /sessions               { title? }                         → chat session
-GET    /sessions/{id}/history                                     → messages[]
-WS     /ws/{session_id}                                           → stream (auth at handshake)
+# Real-time push channel (§8.4) — data updates, NOT tokens; no chat, no client→server messages
+WS     /ws                                                        → per-user channel; auth at
+                                                                  --   handshake, channel derived
+                                                                  --   server-side from the session
 
-# Inventory — natural language first (parse → confirm → commit), forms as fallback
-POST             /inventory/parse  { text }   -- LLM → draft: per-item stock diffs + new-item
-                                              --   proposals + unresolved names; nothing persisted
-POST             /inventory/updates { updates[] }  -- commit confirmed stock changes / item adds;
-                                              --   writes inventory_events (reason = original phrase)
-GET              /inventory                    -- list
-GET/PATCH/DELETE /inventory/{id}               -- precise manual edits
+# Inventory — natural language first (DIRECT COMMIT, §5.1), precise routes as the safety net
+POST             /inventory/interpret { text }  -- interpret → validate → COMMIT in one call;
+                                                --   returns the applied per-item old→new changes
+                                                --   plus any unresolved names. Writes
+                                                --   inventory_events (reason = original phrase)
+                                                --   and pushes the delta on the user's WS channel.
+POST             /inventory/search    { text }  -- interpret → query → matching rows (read-only, §5.8)
+GET              /inventory                     -- list
+GET/PATCH/DELETE /inventory/{id}                -- precise manual edits
 POST             /inventory/{id}/adjust   { delta | absolute, reason? }  -- exact/programmatic update
 
-# Mandates & grants — natural language, parse → confirm → commit (two steps; §1 locked)
+# Mandates & grants — natural language, parse → confirm → commit (two steps; §5.0)
 #   step 1: parse the textarea input into a structured draft (nothing persisted)
 POST             /mandates/parse  { text }    -- LLM → { mandate, grant? } draft, no persist
 POST             /grants/parse    { text }    -- LLM → grant draft, no persist
@@ -738,16 +834,16 @@ Ownership is enforced on every `{id}` route; cross-user access returns 404.
 │  React UI   │◄────►│   Node.js / Fastify    │◄────►│   PostgreSQL   │
 │ Inventory,  │ HTTPS│  REST + WS + Auth guard │      │ users, auth,   │
 │ Mandates,   │  WSS │                         │      │ inventory,     │
-│ Chat, Feed  │      │                         │      │ mandates, runs,│
+│Search, Feed │  push│                         │      │ mandates, runs,│
 └─────────────┘      └───────────┬─────────────┘      │ orders, notifs │
                                  │                    └───────────────┘
               ┌──────────────────┼──────────────────┐
               ▼                  ▼                  ▼
-        ┌────────────────┐  ┌──────────────┐   ┌──────────────────┐
+        ┌────────────────┐  ┌───────────────┐   ┌──────────────────┐
         │ Reorder-window │  │ LLM Service   │   │ ShoppingProvider │
-        │ engine         │  │ (NL parsing + │   │ (interface;      │
-        │ (open / re-run │  │  fallback     │   │  mock → real API)│
-        │  / remind)     │  │  decisions)   │   │                  │
+        │ engine         │  │ (interpret /  │   │ (interface;      │
+        │ (open / re-run │  │  select /     │   │  mock → real API)│
+        │  / remind)     │  │  judge)       │   │                  │
         └────────────────┘  └───────────────┘   └──────────────────┘
 ```
 
@@ -760,99 +856,154 @@ with **timed** events (open at the scheduled local time; a **reminder + auto-clo
 re-run). Implications for the substrate (open decision §12):
 - Opening windows is periodic and can start as an in-process `node-cron` sweep (e.g. every minute,
   "open any window whose start time has arrived; fire reminders for any past `closes_at`").
-- The mid-window re-run is triggered synchronously from the `/inventory/updates` handler when an
+- The mid-window re-run is triggered synchronously from the `/inventory/interpret` handler when an
   open window exists — no scheduler round-trip needed.
 - Timezone matters: the scheduled local time is evaluated in the user's `timezone`, so the engine
   compares against per-user local time, not server UTC wall-clock.
 - Graduating to Cloud Scheduler → a job endpoint / Cloud Tasks (with a per-window delayed task for
   the reminder) is the scale/reliability path.
 
-### 8.1 Natural-language extraction (inventory, mandates & grants)
+### 8.1 Interpretation — free text → DTO
 
-The LLM Service gains a responsibility beyond the streaming chat assistant and the fallback
-decision: **turning free-form text into the structured JSON the app stores.** There are three
-extraction targets, each its own agent-layer function with its own tool/output schema:
+**This is the LLM Service's primary job** (§1): turning free-form text into the structured DTO the
+app stores. There are three *write* targets, each its own agent-layer function with its own
+tool/output schema (search is a fourth, read-only target — §8.2):
 
-1. **Inventory stock updates** — text → a list of per-item `current_stock` changes.
-2. **Inventory item definitions** — text → new `inventory_items` (category/unit/par inferred).
+1. **Inventory item definitions** — text → new `inventory_items` (category/unit/par inferred).
+2. **Inventory stock updates** — text → a list of per-item `current_stock` changes.
 3. **Mandates (+ optional grant)** and **standalone grants** — text → the mandate/grant schema.
 
-All three share one flow — **parse (no persist) → confirm → commit**:
+All three share the same interpretation core. They differ only in **when the write happens** — the
+per-module commit pattern from §5.0.
+
+**The shared core — identical for every target:**
 
 ```
-PARSE (no persist):
-1. UI textarea → POST /{inventory|mandates|grants}/parse { text }
-2. Backend calls the LLM with:
+1. Backend calls the LLM with:
      - the raw user text
-     - the target JSON schema for that extraction type (tool input_schema)
+     - the target JSON schema for that target (the tool's input_schema IS the target schema),
+       so the model must return schema-shaped JSON — never prose to regex
      - CONTEXT so fuzzy language resolves to real rows:
          · the user's inventory item names + ids (so "eggs" → an existing item, not a new one)
          · for stock updates specifically, per named item: current_stock, par_level, unit, and
            the item's mandate trigger threshold — this is what lets "low"/"out"/"plenty" map to a
            concrete number that makes the right mandate fire
-3. LLM returns structured JSON via tool use / structured output (the tool's input_schema IS the
-   target schema), so the model must return schema-shaped JSON, not prose to regex.
-4. Backend validates with the SAME zod schema (never trust the model's shape blindly).
-   Valid → return the draft to the UI (nothing persisted). For stock updates the draft is a
-   per-item old→new diff so the user sees exactly what will change.
-   Invalid / low-confidence / unresolved item → return 422 with the partial parse + a message; the
-   UI prompts to rephrase, edit, or add the missing item. Nothing is guessed into the DB.
-
-CONFIRM → COMMIT (§1 locked: confirm-before-commit):
-5. UI shows the draft (mandate fields, or the per-item stock diff); the user accepts or edits.
-6. UI → POST /{inventory/updates | mandates | grants} with the confirmed object.
-7. Backend re-validates with the same zod schema, then persists:
-     - stock updates → update current_stock + write inventory_events rows (reason = original phrase)
-     - mandate/grant → grant first if present, then mandate with grant_id
-   Only user-confirmed data is ever written.
+2. Model returns structured JSON via tool use / structured output.
+3. Backend validates with the SAME zod schema (never trust the model's shape blindly).
+     Invalid / low-confidence / unresolved item → 422 with the partial parse + a message; the UI
+     prompts to rephrase, edit, or add the missing item. NOTHING is written, under either pattern.
 ```
 
+**Then, per module — direct commit** (inventory, §5.1):
+
+```
+4a. Backend persists immediately, in one transaction:
+      - update current_stock / insert new inventory_items
+      - write inventory_events rows (reason = the original phrase)
+5a. Backend pushes the changed rows on the user's WS channel (§8.4).
+6a. The response carries the applied old→new diff + any unresolved names; the UI clears the input
+    box and refreshes the table.
+```
+
+**…or confirm-before-commit** (mandates & grants, §5.2–5.3):
+
+```
+4b. Backend returns the validated draft — nothing persisted.
+5b. UI shows the draft as a pre-filled, editable form; the user accepts or edits.
+6b. UI → POST /{mandates | grants} with the confirmed object.
+7b. Backend RE-VALIDATES with the same zod schema, then persists:
+      - the grant first if present, then the mandate referencing it via grant_id
+    Only user-confirmed data is ever written.
+```
+
+Steps 1–3 are one shared implementation. A module changes pattern by swapping step 4 — adding or
+removing a `/parse` route and a UI step — not by rewriting its extractor.
+
 Notes:
-- These extraction calls are **non-streaming** and distinct from the chat streaming path — they live
-  in the agent layer (`src/agent/`), reusing the Anthropic client with parsing-specific prompts and
-  tool schemas. Each runs synchronously inside its POST; a short timeout + clear error is the failure
-  mode.
+- These calls are **single-turn, non-streaming, and stateless** — no conversation history is
+  assembled, sent, or stored. They live in the agent layer (`src/agent/`), reusing the Anthropic
+  client with per-target prompts and tool schemas. Each runs synchronously inside its POST; a short
+  timeout + a clear error is the failure mode.
 - **Threshold-aware translation is the crux of the inventory case.** Without feeding the item's
-  `par_level`/trigger to the model, "low on eggs" is unquantifiable; with it, the model can land a
-  `current_stock` in the right band and the confirm diff lets the user nudge it. The stored value is
-  a plain number — the qualitative word is never persisted except as the audit `reason`.
+  `par_level`/trigger to the model, "low on eggs" is unquantifiable; with it, the model lands a
+  `current_stock` in the right band. The stored value is a plain number — the qualitative word is
+  never persisted except as the audit `reason`.
 - Passing existing item names/ids is what lets the model link to an existing `inventory_item_id`
   instead of inventing one; unresolved names are surfaced, not silently created.
 
-### 8.2 Chat inventory lookup (tool use)
+### 8.2 Search interpretation (§5.8)
 
-The streaming chat assistant (§5.8) is given a **read-only inventory-lookup tool** so it can answer
-"do I own / am I low on X?" questions:
+Inventory search is the same machinery pointed at a **query** DTO instead of a write DTO, and it
+persists nothing. **Exactly two stages, and only the first involves the model:**
 
-- The tool takes a query (keywords, and optionally a category) and returns matching
-  `inventory_items` for the **authenticated user only** — `user_id` is bound server-side from the
-  session, never taken from the model, so the model cannot read another user's inventory.
-- It returns candidate rows (name, category, `current_stock`, `attributes`) and the **LLM does the
-  fuzzy matching / disambiguation** — *"LOTR special edition"* → the stored illustrated edition. A
-  broad keyword/category fetch + LLM judgement is simpler and more forgiving than trying to encode
-  fuzzy matching in SQL; revisit with full-text/trigram search if volumes demand it (§12).
-- This runs inside the existing chat WebSocket loop as a tool-use round-trip: the model may call the
-  tool, receive rows, then stream its answer. No new REST route — the capability is agent-side.
-- The tool is strictly read-only (no writes, no orders). Conversational stock edits / mandate
-  creation are intentionally left to the dedicated NL flows (§5.1–5.3).
+1. **Interpret** — text → `{ keywords[], category?, attribute_hints{}, stock_filter? }`, validated
+   with zod like any other target.
+2. **Query** — the backend runs that DTO against `inventory_items` for the **authenticated user
+   only** and returns the matching rows. `user_id` is bound server-side from the auth session, never
+   taken from the model or the request body, so a query cannot reach another user's rows.
+
+That is the whole flow. **Candidate rows are never sent back to the model.** An earlier draft had a
+third "narrowing" stage where the model received the fetched rows and picked the matches; it has
+been removed, for two reasons:
+
+- **The fuzzy matching belongs in stage 1, not a second pass.** The interpretation step must
+  **expand** rather than transcribe — acronyms, synonyms, and inferable attributes go into
+  `keywords[]` so ordinary SQL can find the row (see the DTO contract below). Expansion costs
+  nothing: it is output from a call already being made.
+- **The result is a table, not an answer.** Narrowing existed to collapse candidates to a single
+  authoritative "yes, you own it" — question-answering behaviour inherited from the removed chat
+  assistant. A search box returning three plausible rows is a *good* search result; the user reads
+  them. Nothing downstream needs exactly one row.
+
+Removing it also removes the only place in the design where **LLM cost scaled with how much data a
+user has** — a 5,000-item catalog now costs exactly what a 5-item one does. Search ends up cheaper
+per call than the write path.
+
+**DTO contract — expansion is the requirement that makes this work.** With no second pass to catch a
+miss, stage 1 carries the full burden of turning what the user typed into terms that will match what
+is stored:
+
+| User types | `keywords[]` must contain | Because |
+|---|---|---|
+| *"LOTR"* | `["lord of the rings", "LOTR"]` | The stored row says *"The Lord of the Rings"* |
+| *"that Tolkien ring book"* | `["lord of the rings", "tolkien"]` | Author is a hint, not a title |
+| *"printer ink"* | `["ink", "cartridge", "toner"]` | The row may be *"HP 62XL Black Cartridge"* |
+
+Emit the user's own words **and** the expansions — never one or the other. Qualitative stock
+language (*"am I low on…"*) resolves to `stock_filter`, not keywords, and is evaluated in SQL against
+`current_stock`/`par_level`.
+
+**Matching quality is now a SQL problem**, which is the right place for it: start with
+`ILIKE`/keyword matching over name + `attributes`, and move to `pg_trgm` or full-text when recall
+proves insufficient (§12.20 — now a search-quality decision rather than a cost trade-off).
+
+The route returns **rows**. The UI renders them in its normal inventory table with a
+server-generated count line — the model never composes the user-facing answer, and nothing streams.
+Strictly read-only: no writes, no orders.
 
 ### 8.3 LLM reliability, cost & evaluation
 
-Nearly every user action routes through the LLM (extraction, chat lookup, product selection,
-fallback), so treat the model as a first-class operational dependency, not glue.
+Nearly every user action routes through the LLM (interpretation, search, product selection,
+fallback), so treat the model as a first-class operational dependency, not glue. With no chat
+surface, the model is *invisible* to the user — which raises the bar: a bad interpretation shows up
+as the app silently doing the wrong thing, with no dialogue in which to notice or correct it.
 
 **Failure handling.** Every LLM call has a timeout, a bounded retry (once, on transient
-errors/timeouts), and a **clean user-facing failure** — extraction returns a "couldn't read that,
-try rephrasing" rather than a 500, and a failed product-selection **flags the line item** instead of
-dropping it. No LLM failure should silently corrupt data (the confirm-before-commit gate already
-ensures nothing persists from a bad parse).
+errors/timeouts), and a **clean user-facing failure** — interpretation returns a "couldn't read
+that, try rephrasing" rather than a 500, and a failed product-selection **flags the line item**
+instead of dropping it. No LLM failure should silently corrupt data: validation (§8.1 step 3) is
+what guarantees nothing persists from a bad parse, and it applies under **both** commit patterns —
+direct-commit modules are not less protected, they simply skip the human approval step.
 
 **Cost guard (recommended).**
 - **Model tiering** — use a small/fast model (Haiku-class) for the high-volume, low-stakes calls
-  (extraction, chat lookup, product selection); reserve a larger model only where judgement matters
-  (fallback). This is open decision §12 (extraction model).
-- **Prompt caching** — the extraction/chat system prompts and JSON schemas are large and static;
-  cache them (the Phase-1 system prompt already does this) so repeated calls are cheap.
+  (interpretation, search, product selection); reserve a larger model only where judgement matters
+  (fallback). This is open decision §12.7 (interpretation model).
+- **Prompt caching** — the per-target system prompts and JSON schemas are large and static, and the
+  same handful are reused on every call; mark them `cache_control: ephemeral` so repeated calls skip
+  reprocessing the prefix. Unlike the Phase 1 chat prompt (~60 tokens, below the cacheable minimum),
+  a schema-bearing extraction prompt is comfortably over the threshold, so caching should actually
+  engage here.
 - **Per-user budget/throttle** — track tokens/requests per user; enforce a daily cap on LLM-backed
   endpoints with a friendly error, and a global circuit-breaker if spend crosses a threshold. Pairs
   with the login/abuse throttling in §3.6.
@@ -861,13 +1012,42 @@ ensures nothing persists from a bad parse).
 **Evaluation set (recommended, ship-blocking for trust).** LLM output is non-deterministic and a
 prompt tweak can silently regress behavior, so keep a **checked-in golden eval set** — a few dozen
 input→expected cases per target:
-- extraction: sentences → expected structured JSON (assert key fields, e.g. *"low on eggs"* →
-  `current_stock ≤ trigger`; *"a dozen"* → `12`);
-- chat lookup: queries → expected matched item / "not found";
+- interpretation: sentences → expected structured JSON (assert key fields, e.g. *"low on eggs"* →
+  `current_stock ≤ trigger`; *"a dozen"* → `12`; *"Add 1984 to my Books"* → `{category: "Books",
+  name: "1984"}`);
+- search: queries → expected matched item / "not found";
 - product selection: candidate lists + grant → expected pick / flag.
 Run it as a scripted regression (CI or pre-merge), scoring by field-level/semantic match with a
 tolerance, and **gate prompt/model changes on the pass rate**. Start ~30–50 cases and grow it from
 real misses.
+
+### 8.4 The WebSocket push channel
+
+The WebSocket survives the removal of chat, but its purpose is inverted: it carries **data updates
+from server to client**, not tokens, and it is scoped **per user**, not per conversation.
+
+- **One channel per authenticated user**, opened once the user is logged in. The channel is derived
+  server-side from `request.user.id` at the handshake (§3.4); the client never names it, so there is
+  no path parameter to forge.
+- **Server → client only.** The client sends nothing over it — every user action is a REST call.
+  This is a notification bus, not an RPC transport, which is what makes it safe to treat as
+  best-effort.
+- **Payloads are typed data events**, not text:
+
+```jsonc
+{ "type": "inventory.upserted",  "items": [ { "id": "…", "name": "1984", "category": "Books", … } ] }
+{ "type": "inventory.deleted",   "ids": ["…"] }
+{ "type": "cart.updated",        "order_id": "…", "total_price": "42.10" }
+{ "type": "notification.created","notification": { … } }
+```
+
+- **Why it exists:** an interpret-and-commit call changes rows the user is looking at, and a
+  background reorder run (§5.5) changes them with **no request in flight at all**. The channel is
+  what makes the UI live in both cases, over one delivery path.
+- **It is an optimization, never the source of truth.** Every view is fetchable over REST, so a
+  dropped socket degrades the UI to stale-until-refresh rather than breaking it. That property
+  matters concretely: the frontend has no reconnect logic today (`ARCHITECTURE.md` → *Known gaps*)
+  and Cloud Run caps a socket's lifetime at one hour regardless.
 
 ---
 
@@ -882,13 +1062,17 @@ real misses.
 - **Complex mandate conditions** (multi-item combinations, expiry dates, seasonal rules) beyond
   simple threshold triggers in the first cut.
 - **Partial-fulfillment / delivery-fee edge-case handling** beyond routing it to the LLM fallback.
-- **Bulk inventory import.** Deferred. Items are added one at a time (form or NL), which keeps the
-  app functional at onboarding; a user typing *"add all these to my grocery list: …"* and the chat
-  bulk-creating items is the intended future path (it needs chat to gain write access, currently
-  read-only per §5.8/§8.2) — not required now.
+- **A conversational interface of any kind.** No chatbot, no assistant persona, no multi-turn
+  dialogue, no streaming replies. The LLM is an interpreter behind the UI (§1) and nothing else.
+  Removing the Phase 1 chat app is deliberate and pending (§3.5) — the *capability* is not being
+  deferred to a later phase, it is being dropped.
+- **Bulk file import** (CSV/spreadsheet upload). Deferred. Note that *multi-item* natural language
+  already works — one sentence can add or update several items at once (§5.1) — so the onboarding
+  path is "type a few sentences", not "add one item at a time". Parsing an uploaded file is the
+  deferred part.
 - **Data export.** Account deletion is in scope (§3.6); exporting a user's data is not.
 - **Native mobile app.** Deferred — the app is web-first for now; a phone-app port (the natural home
-  for the in-store chat-lookup use case) is a later phase, not this PRD.
+  for the in-store search use case, §5.8) is a later phase, not this PRD.
 
 ### 9.1 Stretch goal — autonomous ordering
 
@@ -912,7 +1096,8 @@ Extends the `IDEAS.md` build order with the auth layer sequenced first, since ev
 depends on a user identity.
 
 1. **Auth foundation** — `users` + `auth_sessions` tables, signup/login/logout/me, JWT cookie,
-   Fastify auth plugin, WS handshake auth. Add `user_id` to `sessions`; scope existing chat routes.
+   Fastify auth plugin, WS handshake auth. **Drop the Phase 1 `sessions`/`messages` tables and chat
+   routes** (§3.5) and stand up the per-user WS push channel (§8.4) in their place.
    Include **account lifecycle** (§3.6): `PATCH /auth/me`, change-password, `DELETE /auth/me`, and
    **login throttling/lockout**.
 2. **Frontend auth** — signup/login/logout UI, auth guard, credentialed API/WS calls, plus an
@@ -925,12 +1110,13 @@ depends on a user identity.
    (inventory stock updates, item definitions, mandate/grant), the **golden eval set + cost/latency
    logging** (§8.3), and unit-test against fixture sentences — threshold-aware stock mapping
    ("low"→below trigger) and unit normalization ("a dozen"→12) — before wiring to routes.
-5. **NL inventory** — `POST /inventory/parse` → confirm (per-item old→new diff) → `POST
-   /inventory/updates` (§5.1). The everyday path; makes mandates fireable from a weekly sentence.
+5. **NL inventory** — `POST /inventory/interpret` (§5.1): interpret → validate → **commit** →
+   WS push → live UI refresh, in one call. The everyday path; makes mandates fireable from a
+   weekly sentence. Direct commit, per §5.0.
    (At this point the app is already usable as a **track-only inventory** for any category — no
    mandates/schedule required.)
-6. **Chat inventory lookup** (§8.2) — give the existing chat agent a read-only inventory-lookup
-   tool so it can answer *"do I own / am I low on X?"* with fuzzy matching. Depends only on the
+6. **NL inventory search** (§5.8/§8.2) — a read-only search box that interprets *"do I own / am I
+   low on X?"* into a query and renders the matching rows, with fuzzy matching. Depends only on the
    inventory model (step 3); can ship before any reorder machinery.
 7. **Grant CRUD** — the `grants` table + `/grants` routes (§5.3). `POST /grants/parse` returns a
    draft; `POST /grants` commits the confirmed object; PATCH/GET/DELETE operate on parsed fields.
@@ -951,7 +1137,7 @@ depends on a user identity.
 13. **Reorder schedule config** — `user_settings` schedule fields + `/schedule` routes (§5.5): the
     scheduling module UI (recurrence, start time, window length default 12h, timezone).
 14. **Reorder-window engine** — `reorder_windows` table + the lifecycle (§5.5): open a window at the
-    scheduled local time and run the initial check; auto-trigger a re-run from `/inventory/updates`
+    scheduled local time and run the initial check; auto-trigger a re-run from `/inventory/interpret`
     while a window is open (append to the same cart); send the expiry reminder + auto-close at
     `closes_at`. Start as an in-process cron sweep.
 15. **LLM fallback decision** (grant miss **or** budget overrun) + per-user autonomy settings; the
@@ -975,8 +1161,9 @@ Auth / accounts:
       `auth_sessions`; logout revokes.
 - [ ] Every protected REST route returns 401 unauthenticated; every `{id}` route returns 404 for
       another user's resource.
-- [ ] WebSocket upgrade is rejected when unauthenticated; each WS message re-checks chat-session
-      ownership.
+- [ ] The WebSocket upgrade is rejected when unauthenticated, and the channel a connection receives
+      is derived server-side from the auth session — a client cannot subscribe to another user's
+      channel by naming it.
 - [ ] A user can update profile (`PATCH /auth/me`), change password (revoking other sessions), and
       delete their account (`DELETE /auth/me`) — the delete cascades all their data and revokes
       sessions. Repeated failed logins are throttled/locked out.
@@ -988,16 +1175,25 @@ Domain:
 - [ ] Categories are user-defined and unrestricted (groceries, office supplies, books, …); an item
       can exist with no mandate/par/schedule (**track-only** mode) and the app is fully usable that
       way — nothing forces a user into the reorder flow.
-- [ ] The chat assistant answers *"do I own / am I low on X?"* from the asking user's own inventory
-      via a read-only lookup tool, with fuzzy matching (*"LOTR special edition"* → the stored row)
-      and a plain "not tracked" when nothing matches; it never reads another user's data or writes.
-- [ ] Inventory stock updates, mandates, and grants are entered via a free-text textarea; only
-      account creation (and budgets) use a structured form.
-- [ ] `POST /inventory/parse` turns a sentence like *"low on eggs and milk, out of bread"* into a
-      per-item `current_stock` draft where the numbers are **threshold-aware** (e.g. "low" lands
-      at/below the item's mandate trigger so that mandate fires); the draft persists nothing and is
-      shown as an old→new diff. `POST /inventory/updates` commits only the confirmed changes and
-      writes `inventory_events` with the original phrase as `reason`.
+- [ ] **There is no conversational surface anywhere in the app** — no chat route, no assistant
+      persona, no multi-turn state, no streamed prose. Every LLM call is single-turn and returns
+      structured output that the server, not the model, turns into what the user sees.
+- [ ] `POST /inventory/search` answers *"do I own / am I low on X?"* from the asking user's own
+      inventory, returning **rows the UI renders in its normal table** (plus a server-generated count
+      line) — with fuzzy matching (*"LOTR special edition"* → the stored row) and a plain "nothing
+      tracked" when nothing matches. It never reads another user's data and never writes.
+- [ ] A search makes **exactly one LLM call**, and inventory rows are **never sent to the model**:
+      request token count for a search is unchanged whether the user tracks 5 items or 5,000.
+      Fuzzy matching is verified by asserting the interpreted DTO **expands** terms (*"LOTR"* →
+      keywords containing *"lord of the rings"*), not by a second model pass.
+- [ ] Inventory updates, search, mandates, and grants are entered as free text; only account
+      creation (and budgets) use a structured form.
+- [ ] `POST /inventory/interpret` turns *"Add 1984 to my Books"* into a committed `inventory_items`
+      row, and *"low on eggs and milk, out of bread"* into committed per-item `current_stock`
+      changes that are **threshold-aware** (e.g. "low" lands at/below the item's mandate trigger so
+      that mandate fires) — **in one call, with no confirm step** (§5.1). It writes
+      `inventory_events` with the original phrase as `reason`, pushes the change on the user's WS
+      channel, and returns the applied old→new diff so the UI can show what it did.
 - [ ] A stock-update sentence updates multiple items at once; an item the LLM can't resolve is
       surfaced for the user to add, never silently created.
 - [ ] Quantity expressions are normalized to the item's base unit on the way in (*"a dozen"* → `12`,
@@ -1007,7 +1203,11 @@ Domain:
       (confirm-before-commit). A sentence carrying both a trigger and a constraint yields a grant +
       a mandate referencing it.
 - [ ] An unparseable or low-confidence input returns a 4xx with the partial parse and is never
-      surfaced as a final, committed value.
+      surfaced as a final, committed value — **under both commit patterns**, including the
+      direct-commit inventory routes.
+- [ ] Committing through any interpreting write route pushes the resulting change on the user's
+      WebSocket channel, and the UI updates without a manual refresh; with the socket closed, the
+      same data is still correct on the next REST fetch.
 - [ ] Inventory (NL + precise `/adjust`), grant, and mandate CRUD work end-to-end, fully
       user-scoped.
 - [ ] A grant can be referenced by a mandate; deleting a grant nulls the reference on its mandates
@@ -1041,7 +1241,7 @@ Domain:
 - [ ] Placing a cart sets each ordered item's `current_stock` to its `restock_level`, so the item is
       **not re-proposed** on the next window; a short/failed delivery is corrected by a normal NL
       stock update.
-- [ ] A golden eval set (§8.3) covers extraction, chat lookup, and product selection, runs as a
+- [ ] A golden eval set (§8.3) covers interpretation, search, and product selection, runs as a
       scripted regression, and gates prompt/model changes; LLM calls log tokens/latency/model and are
       throttled per user.
 - [ ] LLM fallback returns only actions from the fixed set and never exceeds the user's autonomy
@@ -1052,8 +1252,9 @@ Domain:
       built.)
 
 Migrations / compatibility:
-- [ ] New migrations add `users`, `auth_sessions`, `user_id` on `sessions`, and the domain tables;
-      the existing Phase 1 chat flow still works for an authenticated user.
+- [ ] New migrations **drop** the Phase 1 `sessions` and `messages` tables and add `users`,
+      `auth_sessions`, and the domain tables. No chat route, chat table, or streaming handler
+      survives anywhere in the codebase.
 
 ---
 
@@ -1074,8 +1275,11 @@ Migrations / compatibility:
 6. **Email verification & password reset transport**: which mail provider, and whether verification
    gates signup or only the autonomous stretch goal (assumed: it's not required for the assisted
    flow, since the user checks out themselves).
-7. **Extraction model**: which Claude model does the NL→JSON parsing, and whether it's the same
-   model as the chat assistant. A smaller/faster model may suffice for structured extraction.
+7. **Interpretation model**: which Claude model does the NL→JSON interpretation, and whether one
+   model serves every target or the tiers split (§8.3) — a small/fast model for interpretation,
+   search and product selection, a larger one only for the §5.6 judgment call. Note the tiers have
+   different minimum cacheable prefixes, so tiering down can silently disable prompt caching —
+   measure both ways rather than assuming the cheaper model is cheaper.
 8. **Budget period reset**: calendar-month (resets on the 1st) vs rolling 30-day vs configurable
    per budget. Calendar-month is the assumed default.
 9. **Budget category granularity**: account-wide + single-level category keyed off
@@ -1115,12 +1319,13 @@ Migrations / compatibility:
 19. **Window length & multiple schedules**: 12h is the assumed default window; confirm the min/max
     bounds, and whether a user may configure more than one reorder schedule (assumed: one per user
     for now).
-20. **Chat inventory-lookup matching**: LLM fuzzy-matching over a broad keyword/category fetch
-    (assumed, §8.2 — simplest, most forgiving) vs SQL full-text / `pg_trgm` trigram search. Start
-    with the former; add DB-side search if catalogs get large enough that fetching candidates is
-    costly.
+20. **Search matching** (§5.8/§8.2): how far the SQL side needs to go — `ILIKE`/keyword matching
+    over name + `attributes` (assumed; start here) vs `pg_trgm` trigram vs full-text. Matching is
+    SQL-side either way now that the LLM narrowing pass is gone, so this is purely a search-quality
+    decision: escalate when an expanded-keyword DTO still misses rows users expect to find. Pairs
+    with §12.21 — predictable `attributes` conventions make DB-side matching easier.
 21. **`attributes` shape**: fully freeform per-item `jsonb` (assumed) vs light per-category
-    conventions (e.g. books → {author, edition, isbn}) to make chat matching and any future
+    conventions (e.g. books → {author, edition, isbn}) to make search matching and any future
     UI/filtering more predictable.
 22. **Product-candidate ranking**: rank provider search results LLM-side over a raw candidate list
     (assumed, §5.10 — flexible, handles grant nuances) vs provider-side/deterministic pre-ranking
@@ -1129,8 +1334,17 @@ Migrations / compatibility:
     it to — `par_level`, the purchased quantity, or leave stock unchanged and rely on a manual
     update? Assumed: fall back to `par_level`, else the ordered quantity.
 
-**Decisions now locked** (were open in earlier drafts; confirmed by the maintainer): mandates/grants
-use **confirm-before-commit** — the parsed draft is shown for approval/edit before persisting, so the
-`/…/parse` preview routes (§7) are part of the standard flow, not optional; and the **stored trigger
-is a structured `{op, field, value}` form** that the scheduler evaluates deterministically, with the
-free text used only as the LLM's input. See the §1 locked-decisions table.
+**Decisions now locked** (were open in earlier drafts; confirmed by the maintainer):
+
+- **No conversational surface.** The LLM is an interpreter only (§1). The Phase 1 chat app — chat
+  sessions, the `messages` table, token streaming — is to be removed, and the WebSocket becomes a
+  per-user data push channel (§8.4). Decision is locked; the work is pending (§3.5).
+- **Commit policy is per module, not global.** Both patterns are first-class (§5.0); each module
+  picks one as it is built and records the choice. Settled so far: inventory → **direct commit**
+  (§5.1); mandates and grants → **confirm-before-commit** (§5.2–5.3), so their `/…/parse` routes are
+  part of the standard flow, not optional. Later modules decide as they land — and switching later
+  is cheap by design, since both patterns share one interpretation core (§8.1).
+- **The stored trigger is a structured `{op, field, value}` form** that the scheduler evaluates
+  deterministically, with the free text used only as the LLM's input.
+
+See the §1 locked-decisions table.

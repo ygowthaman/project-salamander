@@ -4,13 +4,15 @@ This folder handles all database connectivity and query logic for the Salamander
 
 ## Database
 
-PostgreSQL, accessed through Drizzle ORM over `pg` (node-postgres). In local dev it is a locally installed PostgreSQL 16. In production it is Cloud SQL (GCP), connected via the Cloud SQL Auth Proxy sidecar on Cloud Run.
+PostgreSQL, accessed through Drizzle ORM over `pg` (node-postgres). In local dev it is a locally installed PostgreSQL 16. In production it is a self-managed PostgreSQL on a Compute Engine VM, reached from Cloud Run over Direct VPC egress — see `docs/DEPLOYMENT.md` for the as-built topology.
 
 ## Dependencies
 
 `client.ts` is the single dependency point for the rest of the backend. It owns the `pg.Pool` and the Drizzle instance built on top of it. Because `pg` pools connections internally, there is no session factory and no request-scoped dependency injection to wire up — callers import `db` directly and the pool hands out a connection per query.
 
-Repositories accept a `DbExecutor` — either the pool-backed `db` or a transaction handle from `db.transaction(...)`. That one type is what lets the same repository function be called inside or outside a transaction, which the WebSocket layer relies on (see `../api/API_CONTEXT.md`).
+Repositories accept a `DbExecutor` — either the pool-backed `db` or a transaction handle from `db.transaction(...)`. That one type is what lets the same repository function be called inside or outside a transaction, which the interpret-and-commit flow relies on to write a row and its audit event atomically (see `../api/API_CONTEXT.md`).
+
+Keep transactions off the LLM path: never hold one open across a call to Anthropic, or a pooled connection stays pinned for the length of a network round trip.
 
 `DATABASE_URL` is normalised in `client.ts`: the old SQLAlchemy `postgresql+asyncpg://` scheme is rewritten to plain `postgresql://`, so a stale `.env` still works.
 
@@ -24,10 +26,14 @@ After editing `schema.ts`, run `npm run db:generate` and commit the generated SQ
 
 - **client.ts** — `pg.Pool` + Drizzle instance, and the `Db` / `DbExecutor` types. Everything else in this folder depends on it.
 
-- **schema.ts** — Drizzle table definitions for `sessions` and `messages`, and the inferred row types. UUID primary keys are generated in the app via `crypto.randomUUID` rather than by the database, so no `pgcrypto` extension is needed and the ID is known before the insert returns.
+- **schema.ts** — Drizzle table definitions and the inferred row types. Today it holds `sessions` and `messages`, both of which are **to be dropped** with the chat app (`docs/ARCHITECTURE.md` → *Removing the chat app*) — that needs a hand-written drop migration, since `meta/*_snapshot.json` was never committed and `drizzle-kit generate` cannot diff this repo. The domain tables (`users`, `auth_sessions`, `inventory_items`, …) arrive with roadmap Phase 1; the target model is `docs/PRD.md` §6.
 
 - **migrate.ts** — runs pending migrations. Called by `server.ts` at boot; also runnable standalone via `npm run db:migrate`.
 
-- **repositories/sessions.ts** — query logic for the `sessions` table.
+- **repositories/** — query logic, one module per table. Today `sessions.ts` and `messages.ts`, both removed with the chat app; the domain repositories replace them.
 
-- **repositories/messages.ts** — query logic for the `messages` table. `getHistory` orders by `created_at` ascending, backed by the `(session_id, created_at)` index.
+## Conventions for new tables
+
+- **App-generated UUID primary keys** via `crypto.randomUUID` rather than a DB-side `gen_random_uuid()`, so no `pgcrypto` extension is needed and the ID is known before the insert returns.
+- **Every user-owned table carries `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`**, indexed as `(user_id, …)` for its common list query. Account deletion then cascades with no bespoke cleanup.
+- **`jsonb` only for genuinely open-ended fields** (item `attributes`, fallback decisions, notification payloads), validated with zod at the boundary. Anything queried or constrained gets a real column.

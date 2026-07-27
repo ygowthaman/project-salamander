@@ -177,7 +177,8 @@ export BACKEND_URL=$(gcloud run services describe salamander-server \
   --region="$REGION" --format='value(status.url)')
 echo "$BACKEND_URL"
 
-# Smoke test:
+# Smoke test (today's chat app; becomes `curl -s "$BACKEND_URL/health"` once the
+# chat surface is removed — see ARCHITECTURE.md → Removing the chat app):
 curl -sX POST "$BACKEND_URL/sessions" -H 'Content-Type: application/json' -d '{}'
 # → {"id":"...","title":"New Session","created_at":"..."}
 ```
@@ -298,8 +299,8 @@ Click **Verify**/**Finish** in Firebase. Then two waits:
   worst case ~24h. Don't bypass the warning — it clears itself when the Hosting
   page flips to **Connected**. Then hard-refresh (Ctrl+Shift+R).
 
-Because 7a already allowed the origin, chat and the WebSocket work the instant the
-cert is live.
+Because 7a already allowed the origin, REST calls and the WebSocket work the
+instant the cert is live.
 
 ---
 
