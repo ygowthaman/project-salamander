@@ -45,7 +45,8 @@ plain text → LLM interprets → DTO → server validates + commits → WS push
 ```
 
 Concretely: the user types *"Add 1984 to my Books"* into the inventory input; the model returns
-`{ category: "Books", name: "1984", … }`; the server validates it with zod, writes the row, and
+`{ name: "1984", category_id: "…", … }` (or a proposed `new_category`, §5.1.1); the server
+validates it with zod, writes the row, and
 pushes the new record over that user's WebSocket; the UI clears the input box and the entry appears
 in the table. One shot — no dialogue, no streaming, no conversation history.
 
@@ -93,6 +94,7 @@ of it:
 | Input model | **Natural-language-first**: free text → LLM interpret → DTO — for inventory stock updates, item definitions, mandates, grants, and search. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `current_stock`). |
 | Commit policy | **Decided per module, not globally.** Two supported patterns: **direct commit** (interpret → validate → write → push) and **confirm-before-commit** (interpret → show draft → user approves → write). | Low-stakes, high-frequency edits favour direct commit; anything that drives real spending favours the confirm gate. The right trade-off differs per module, so each module states its choice when it is built (§5.0). |
 | Stored trigger form | **Structured `{op, field, value}`** | The scheduler must evaluate triggers deterministically; the free text is only the LLM's input, never what runs. |
+| Category model | **A first-class per-user `categories` table**, referenced by `inventory_items.category_id` and `budgets.category_id` | Category is the one classification the app *joins on* (budgets aggregate spend by it). As free text, an LLM writing `grocery` then `groceries` silently splits a budget instead of erroring. A unique row items point at makes that unrepresentable and makes renaming a one-row update. `unit` stays free text — nothing joins on it (§5.1.1). |
 | Spend limits | **Two-tier: per-item grants + per-period/category budgets** | A grant bounds one purchase ("eggs ≤ $5"); a budget bounds cumulative category spend over a period ("groceries ≤ $500/month"). Budget headroom is what makes grant overrides meaningful. |
 | Ordering model | **Assisted: agent builds the cart, user places the order manually** | The agent assembles a ready-to-checkout cart and notifies the user; the user does the actual checkout. The app never auto-completes a purchase in this scope. Autonomous placement is a stretch goal (§9.1). |
 | Post-purchase restock | **Placing a cart optimistically sets each ordered item's stock to its `restock_level` ("full")** | Closes the reorder loop and prevents re-proposing just-ordered items (§5.9). Placing ≠ delivered, so a short/failed delivery is corrected with a normal NL stock update. |
@@ -242,6 +244,7 @@ Table-stakes account management for a shippable app (data export is explicitly *
 | Term | Definition |
 |---|---|
 | **Inventory** | The items a user tracks, with current stock levels. |
+| **Category** | A user-defined classification an item belongs to (groceries, books, office supplies). A first-class row, curated from its own UI page, referenced by items and by budgets (§5.1.1). |
 | **Mandate** | A condition that triggers a shopping action, e.g. "if eggs < 2 units, buy eggs." |
 | **Grant** | Per-purchase constraints attached to a mandate, e.g. "price ≤ $5, preferred brand X." |
 | **Budget** | A per-period, per-category cumulative spend limit, e.g. "groceries ≤ $500/month." |
@@ -273,8 +276,9 @@ the translation. There is **no conversation**: each input is one shot, and the r
 data in the UI, never a reply from a model.
 
 **Structured forms are reserved for the few genuinely bounded, high-stakes inputs** where prose adds
-nothing and precision matters: **account creation** (email, password — §3) and **budgets** (name,
-amount, category, period — §5.4; NL is an option there per §12).
+nothing and precision matters: **account creation** (email, password — §3), **budgets** (name,
+amount, category, period — §5.4; NL is an option there per §12), and **categories** (a single name
+field on a curated taxonomy page — §5.1.1).
 
 #### The two commit patterns
 
@@ -310,7 +314,8 @@ Each module's §5 subsection records the choice it makes and why; `ROADMAP.md` r
 ### 5.1 Inventory management
 
 **Categories are arbitrary and reorder is optional.** An `inventory_item` is just something the user
-tracks — a grocery, printer ink, or a book — distinguished by its user-defined `category`. Items are
+tracks — a grocery, printer ink, or a book — distinguished by the user-defined **category** it
+references via `category_id` (a first-class row, not a string — §5.1.1). Items are
 useful on their own: a user can maintain a **track-only** catalog (e.g. books they own) with no
 mandate, grant, budget, or schedule attached, and never enter the reorder flow at all. `par_level`
 and any mandate are optional per item. For non-consumables that carry richer metadata (a book's
@@ -374,6 +379,44 @@ just-lowered items are re-evaluated against their mandates and any newly-passing
 to the window's live cart. This is the "check inventory → add missing items → cart grows" step of
 the window flow. Outside an open window the update just records the number.
 
+#### 5.1.1 Categories
+
+A **category** is a first-class, user-owned row (`categories`, §6) — not a string typed onto each
+item. Every `inventory_item` references one via `category_id`, and a budget optionally references
+one to scope its ceiling (§5.4). Categories remain **arbitrary and entirely user-defined**; making
+them a table constrains their *integrity*, not their content.
+
+**Why a table rather than free text.** Category is the one classification the app **joins on**:
+budgets aggregate spend by it (§5.4), and the fallback decision reads an item's category to find the
+applicable budget and its headroom (§5.6). Under free text, an interpreter that writes `grocery` on
+Monday and `groceries` on Tuesday does not produce a cosmetic inconsistency — it **silently splits
+the user's budget**, so part of their spend stops counting against the ceiling and nothing anywhere
+errors. A `UNIQUE (user_id, lower(name))` row that items point at makes that failure
+unrepresentable, and turns renaming a category into a one-row update rather than a mass rewrite that
+breaks every budget referencing the old string. Contrast `unit`, which deliberately **stays free
+text**: nothing joins on it, and drift there never escapes the row it sits in.
+
+**Managed from a dedicated UI page, not natural language.** This is an explicit exception to §5.0's
+NL-first default, for the same reason budgets are: the input is one bounded field, the set is small
+and long-lived, and it is a taxonomy the user *curates* rather than a sentence they dictate. The
+page lists the user's categories with the number of items in each, and supports:
+
+- **Create** — `POST /categories { name }`. Unique per user, case-insensitively; duplicate → 409.
+- **Rename** — `PATCH /categories/{id} { name }`. Items and budgets follow automatically, because
+  they hold the id, not the name.
+- **Delete** — `DELETE /categories/{id}`, backed by **`ON DELETE RESTRICT`**. Deleting a category
+  that still has items returns **409 with the item count**; the user reassigns or deletes those
+  items first. A cascade is deliberately *not* offered — it would let one click silently delete an
+  entire book collection.
+
+**The interpreter may create a category, unlike an item.** When the item-definition target (§8.1)
+receives *"Add 1984 to my Books"* on an account with no `Books` category, it resolves against the
+category list it was given and, finding no match, returns a **proposed new category name** instead
+of an id; the server creates it inside the same commit transaction. This is deliberately looser than
+the rule for item names, which are **surfaced, never invented** (§5.1). The asymmetry is
+intentional: inventing a category is cheap, immediately visible on the categories page, and undone
+with a rename — whereas inventing an inventory item corrupts what the user believes they own.
+
 ### 5.2 Mandates
 - **Created from natural-language text**, not a form. The user types a sentence into a textarea
   (e.g. *"buy a dozen eggs when we drop below 2, only if they're under $5"*). The backend passes
@@ -432,14 +475,16 @@ grocery budget (≤ $500/month). Both are needed — neither expresses the other
 
 - CRUD for a budget, scoped to the authenticated user:
   - **`name`** — human label (e.g. "Monthly groceries").
-  - **`category`** — the `inventory_items.category` this applies to; **`NULL` = account-wide**
-    (all spend). This is how "$500 for all groceries" and a future "$100 household" coexist.
+  - **`category_id`** — FK → `categories(id)` (§5.1.1); **`NULL` = account-wide** (all spend). This
+    is how "$500 for all groceries" and a future "$100 household" coexist. Because this is a real
+    FK rather than a matched string, a category rename cannot orphan a budget and two spellings of
+    the same category cannot split its spend.
   - **`amount`** — the ceiling for one period (numeric).
   - **`period`** — `monthly` (default) / `weekly`; the reset rule (calendar vs rolling) is an
     open decision (§12).
 - **Spend is computed, not stored**: the amount spent this period = sum of `orders.total_price`
   for **`placed`** orders (the ones the user actually checked out; §5.9) in the current period
-  window whose items map to the budget's category (via `mandate → inventory_item → category`). No
+  window whose items map to the budget's category (joining `mandate → inventory_item → category_id`). No
   running total to drift out of sync. A `proposed` cart the user hasn't placed yet does not count
   as spend, but a run *may* factor pending carts into headroom to avoid over-proposing — an open
   decision (§12).
@@ -553,7 +598,7 @@ DTO, and a result set instead of a commit:
 
 ```
 "do I have the LOTR special edition?"
-  → interpret → { keywords: ["lord of the rings", "LOTR", "tolkien"], category: "Books",
+  → interpret → { keywords: ["lord of the rings", "LOTR", "tolkien"], category_id: "c2",
                   attribute_hints: { edition: "special" } }
   → server queries the user's inventory with that DTO (scoped by user_id)
   → UI renders: 1 result — "The Lord of the Rings — Illustrated Special Edition", Books, qty 1
@@ -662,8 +707,17 @@ auth_sessions
 -- NOTE: the Phase 1 `sessions` and `messages` tables are to be DROPPED (§3.5). There is no chat
 --   session and no conversation history to store; the LLM is stateless per call (§1).
 
+categories                     -- user-defined item taxonomy, curated from its own UI page (§5.1.1)
+  id, user_id → users(id), name, created_at, updated_at
+  -- UNIQUE (user_id, lower(name)) — case-insensitive, so "Groceries"/"groceries" cannot both
+  --   exist and silently split a budget's spend across two rows (§5.4).
+  -- Referenced by inventory_items.category_id and budgets.category_id, both ON DELETE RESTRICT:
+  --   a category with items cannot be deleted (409), because cascading would take the items.
+
 inventory_items
-  id, user_id → users(id), name, category, unit (nullable),
+  id, user_id → users(id), name,
+  category_id → categories(id) ON DELETE RESTRICT,
+  unit (nullable),
   current_stock (nullable), par_level (nullable),   -- null for track-only, non-consumable items
   restock_level (nullable),        -- the "full" quantity; stock is set to this when a reorder is
                                    --   PLACED (§5.9). eggs → 12, bread → 1. LLM-inferred, editable.
@@ -671,7 +725,8 @@ inventory_items
   created_at, last_updated
   -- All quantity fields are stored in the item's base unit; the LLM normalizes
   --   "a dozen"/"a loaf" to numbers on the way in (§5.1).
-  -- category is arbitrary/user-defined (groceries, office supplies, books, …).
+  -- category content stays arbitrary/user-defined (groceries, office supplies, books, …);
+  --   only its integrity is constrained — see `categories` above and §5.1.1.
   -- An item needs no mandate/par to exist; reorder is opt-in (§5.1).
 
 inventory_events               -- optional audit log
@@ -685,7 +740,7 @@ grants                         -- reusable, user-owned per-purchase constraints 
 
 budgets                        -- aggregate, per-period, per-category spend limit (macro)
   id, user_id → users(id), name,
-  category (text, nullable → matches inventory_items.category; NULL = account-wide),
+  category_id (nullable → categories(id) ON DELETE RESTRICT; NULL = account-wide),
   amount (numeric), period ('monthly' | 'weekly'), created_at, updated_at
   -- spend-so-far is COMPUTED from PLACED orders in the current period, not stored
 
@@ -740,7 +795,7 @@ user_settings                  -- autonomy + reorder-schedule config
   -- schedule_* replaces the old single schedule_cron: the schedule now opens a
   --   reorder WINDOW (§5.5), not a single instant.
   -- per_run_spend_cap is a single-run circuit-breaker; per-period/per-category
-  --   ceilings live in `budgets` (old `spend_ceiling` → account-wide budget, category = NULL)
+  --   ceilings live in `budgets` (old `spend_ceiling` → account-wide budget, category_id = NULL)
 ```
 
 Grant constraints are modeled as first-class columns on the `grants` table (not a blob), so they
@@ -769,6 +824,12 @@ WS     /ws                                                        → per-user c
                                                                   --   handshake, channel derived
                                                                   --   server-side from the session
 
+# Categories (§5.1.1) — form input on a dedicated UI page, NOT natural language
+GET    /categories                  -- list, each with its item count
+POST   /categories      { name }    -- unique per user, case-insensitive (409 on duplicate)
+PATCH  /categories/{id} { name }    -- rename; items and budgets follow the id, not the name
+DELETE /categories/{id}             -- 409 + item count if any item still references it (RESTRICT)
+
 # Inventory — natural language first (DIRECT COMMIT, §5.1), precise routes as the safety net
 POST             /inventory/interpret { text }  -- interpret → validate → COMMIT in one call;
                                                 --   returns the applied per-item old→new changes
@@ -791,7 +852,7 @@ GET              /mandates ; GET /grants                 -- list
 GET/PATCH/DELETE /mandates/{id} ; /grants/{id}          -- PATCH edits parsed fields directly
 
 # Budgets (per-period, per-category spend limits, macro) — form input (or NL, §12)
-GET/POST         /budgets         { name, category?, amount, period }
+GET/POST         /budgets         { name, category_id?, amount, period }
 GET/PATCH/DELETE /budgets/{id}
 GET              /budgets/{id}/status         -- amount, spent this period, remaining, days left
 
@@ -870,6 +931,7 @@ app stores. There are three *write* targets, each its own agent-layer function w
 tool/output schema (search is a fourth, read-only target — §8.2):
 
 1. **Inventory item definitions** — text → new `inventory_items` (category/unit/par inferred).
+   Category resolves to an existing `category_id` or a proposed new name (§5.1.1).
 2. **Inventory stock updates** — text → a list of per-item `current_stock` changes.
 3. **Mandates (+ optional grant)** and **standalone grants** — text → the mandate/grant schema.
 
@@ -885,6 +947,8 @@ per-module commit pattern from §5.0.
        so the model must return schema-shaped JSON — never prose to regex
      - CONTEXT so fuzzy language resolves to real rows:
          · the user's inventory item names + ids (so "eggs" → an existing item, not a new one)
+         · the user's categories as {id, name} pairs (§5.1.1), so the model returns a
+           `category_id` rather than a free-typed string that could drift from an existing row
          · for stock updates specifically, per named item: current_stock, par_level, unit, and
            the item's mandate trigger threshold — this is what lets "low"/"out"/"plenty" map to a
            concrete number that makes the right mandate fire
@@ -930,14 +994,25 @@ Notes:
   never persisted except as the audit `reason`.
 - Passing existing item names/ids is what lets the model link to an existing `inventory_item_id`
   instead of inventing one; unresolved names are surfaced, not silently created.
+- **Categories follow the same id-resolution rule, with one deliberate difference.** The item
+  definition target returns **exactly one of** `category_id` (an id from the supplied list) or
+  `new_category` (a proposed name) — never a bare category string, which is what would let two
+  spellings split a budget (§5.1.1). Unlike an unresolved *item*, an unresolved *category* is
+  created rather than surfaced, inside the same commit transaction:
+
+  ```jsonc
+  { "name": "Eggs", "category_id": "c1",         "unit": "each", "quantity": 12 }  // existing
+  { "name": "1984", "new_category": "Books",     "unit": "each", "quantity": 1  }  // creates it
+  ```
 
 ### 8.2 Search interpretation (§5.8)
 
 Inventory search is the same machinery pointed at a **query** DTO instead of a write DTO, and it
 persists nothing. **Exactly two stages, and only the first involves the model:**
 
-1. **Interpret** — text → `{ keywords[], category?, attribute_hints{}, stock_filter? }`, validated
-   with zod like any other target.
+1. **Interpret** — text → `{ keywords[], category_id?, attribute_hints{}, stock_filter? }`,
+   validated with zod like any other target. `category_id` is chosen from the user's category list
+   passed as context (§5.1.1) — a filter on a real FK, not a string compared against stored text.
 2. **Query** — the backend runs that DTO against `inventory_items` for the **authenticated user
    only** and returns the matching rows. `user_id` is bound server-side from the auth session, never
    taken from the model or the request body, so a query cannot reach another user's rows.
@@ -1013,8 +1088,8 @@ direct-commit modules are not less protected, they simply skip the human approva
 prompt tweak can silently regress behavior, so keep a **checked-in golden eval set** — a few dozen
 input→expected cases per target:
 - interpretation: sentences → expected structured JSON (assert key fields, e.g. *"low on eggs"* →
-  `current_stock ≤ trigger`; *"a dozen"* → `12`; *"Add 1984 to my Books"* → `{category: "Books",
-  name: "1984"}`);
+  `current_stock ≤ trigger`; *"a dozen"* → `12`; *"Add 1984 to my Books"* → `{name: "1984"}` with
+  the `Books` `category_id` when it exists and `new_category: "Books"` when it does not);
 - search: queries → expected matched item / "not found";
 - product selection: candidate lists + grant → expected pick / flag.
 Run it as a scripted regression (CI or pre-merge), scoring by field-level/semantic match with a
@@ -1035,8 +1110,11 @@ from server to client**, not tokens, and it is scoped **per user**, not per conv
 - **Payloads are typed data events**, not text:
 
 ```jsonc
-{ "type": "inventory.upserted",  "items": [ { "id": "…", "name": "1984", "category": "Books", … } ] }
+{ "type": "inventory.upserted",  "items": [ { "id": "…", "name": "1984",
+                                             "category": { "id": "c2", "name": "Books" }, … } ] }
 { "type": "inventory.deleted",   "ids": ["…"] }
+{ "type": "category.upserted",   "categories": [ { "id": "c2", "name": "Books", "item_count": 1 } ] }
+{ "type": "category.deleted",    "ids": ["…"] }
 { "type": "cart.updated",        "order_id": "…", "total_price": "42.10" }
 { "type": "notification.created","notification": { … } }
 ```
@@ -1102,7 +1180,9 @@ depends on a user identity.
    **login throttling/lockout**.
 2. **Frontend auth** — signup/login/logout UI, auth guard, credentialed API/WS calls, plus an
    account-settings screen (profile / password / delete).
-3. **Inventory model + precise edits** — `inventory_items` + `inventory_events`, the structured
+3. **Categories + inventory model + precise edits** — `categories` (with its `/categories` routes
+   and the categories UI page, §5.1.1) lands **first**, since `inventory_items.category_id` is a
+   NOT NULL FK to it. Then `inventory_items` + `inventory_events` and the structured
    `GET/POST/PATCH/DELETE /inventory` and `/inventory/{id}/adjust` routes, user-scoped. This is the
    deterministic substrate the NL layer writes through. No scheduling yet.
 4. **NL extraction layer** (§8.1) — the agent-layer functions that parse free-form text into
@@ -1175,6 +1255,17 @@ Domain:
 - [ ] Categories are user-defined and unrestricted (groceries, office supplies, books, …); an item
       can exist with no mandate/par/schedule (**track-only** mode) and the app is fully usable that
       way — nothing forces a user into the reorder flow.
+- [ ] A categories page lists the user's categories with item counts and supports create, rename,
+      and delete. Names are unique per user **case-insensitively** (a second "groceries" is a 409,
+      not a second row). Renaming a category leaves every item and budget pointing at it, with no
+      rewrite. Deleting one that still has items returns **409 with the item count** and deletes
+      nothing.
+- [ ] `inventory_items.category_id` and `budgets.category_id` are real FKs, so a budget's spend can
+      never be split across two spellings of the same category, and no interpreted write can
+      introduce a category that is not a row on the categories page.
+- [ ] The item-definition interpreter returns **either** an existing `category_id` **or** a proposed
+      `new_category` — never a bare string. A proposed new category is created in the same
+      transaction as the item; an unresolved *item* name is still surfaced, never invented.
 - [ ] **There is no conversational surface anywhere in the app** — no chat route, no assistant
       persona, no multi-turn state, no streamed prose. Every LLM call is single-turn and returns
       structured output that the server, not the model, turns into what the user sees.
@@ -1283,8 +1374,10 @@ Migrations / compatibility:
 8. **Budget period reset**: calendar-month (resets on the 1st) vs rolling 30-day vs configurable
    per budget. Calendar-month is the assumed default.
 9. **Budget category granularity**: account-wide + single-level category keyed off
-   `inventory_items.category` (recommended, assumed above) vs nested/hierarchical budgets
-   (groceries → dairy → …). Single-level covers the "$500 groceries + $5 eggs" case.
+   `inventory_items.category_id` (recommended, assumed above) vs nested/hierarchical budgets
+   (groceries → dairy → …). Single-level covers the "$500 groceries + $5 eggs" case. Note the
+   `categories` table (§5.1.1) leaves room to add a nullable `parent_id` later without touching
+   items or budgets, so this stays cheap to revisit.
 10. **Budget input method**: a simple form (recommended, per the §5.0 bounded-fields principle)
     vs the same NL textarea path as mandates/grants. The extractor can emit a budget either way.
 11. **Budget-breach behavior**: route every would-be breach to the LLM fallback so the
@@ -1326,13 +1419,20 @@ Migrations / compatibility:
     with §12.21 — predictable `attributes` conventions make DB-side matching easier.
 21. **`attributes` shape**: fully freeform per-item `jsonb` (assumed) vs light per-category
     conventions (e.g. books → {author, edition, isbn}) to make search matching and any future
-    UI/filtering more predictable.
+    UI/filtering more predictable. Now that `categories` is a table (§5.1.1), those conventions
+    have somewhere to live — a `suggested_attribute_keys` column on the category, fed into the
+    interpreter's prompt — so this can be deferred until search recall demands it.
 22. **Product-candidate ranking**: rank provider search results LLM-side over a raw candidate list
     (assumed, §5.10 — flexible, handles grant nuances) vs provider-side/deterministic pre-ranking
     with the LLM only breaking ties (cheaper, more predictable). Start LLM-side; revisit on cost.
 23. **`restock_level` fallback**: when an item has no `restock_level` set, what does placing restock
     it to — `par_level`, the purchased quantity, or leave stock unchanged and rely on a manual
     update? Assumed: fall back to `par_level`, else the ordered quantity.
+24. **Category seeding**: does a new account start empty (assumed — the first categories come from
+    the categories page or implicitly from the interpreter, §5.1.1), or ship with a small default
+    set (Groceries, Household, Books)? Seeding smooths onboarding but plants rows most users will
+    rename or delete. Related: whether the interpreter's implicit category creation should be
+    switchable off for users who want a closed taxonomy.
 
 **Decisions now locked** (were open in earlier drafts; confirmed by the maintainer):
 

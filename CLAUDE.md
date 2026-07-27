@@ -12,7 +12,7 @@ Salamander is a shopping agent: it tracks what a user owns and, when stock runs 
 plain text → LLM interprets → DTO → server validates + commits → WS push → UI updates
 ```
 
-The user types *"Add 1984 to my Books"*; the model returns `{ category: "Books", name: "1984", … }`; the server validates with zod, writes the row, pushes it over that user's WebSocket, and the UI clears the input and shows the new entry.
+The user types *"Add 1984 to my Books"*; the model returns `{ name: "1984", category_id: "…", … }` — an id resolved from the user's own categories, or a proposed `new_category` when none matches (`docs/PRD.md` §5.1.1); the server validates with zod, writes the row, pushes it over that user's WebSocket, and the UI clears the input and shows the new entry.
 
 Rules that follow from this — treat them as invariants:
 
@@ -21,8 +21,9 @@ Rules that follow from this — treat them as invariants:
 - **Always validate the model's output** with the same zod schema the route uses. This gate — not any UI confirm step — is what keeps a bad parse out of the database.
 - **`user_id` is bound server-side**, never taken from a model response or a request body.
 - The **WebSocket is a per-user, server→client push channel** carrying row changes, not tokens. It is best-effort; REST is the source of truth.
+- **Anything the app joins on is its own table, and the model returns its id — never a free-typed string.** `categories` is the worked example (`docs/PRD.md` §5.1.1): budgets aggregate spend by category, so an interpreter writing `grocery` one day and `groceries` the next would silently split a budget with nothing erroring. The interpreter is handed `{id, name}` pairs and returns a `category_id` (or a proposed `new_category`). `unit` fails the same test — nothing joins on it — so it stays free text.
 
-Commit policy (direct commit vs. confirm-before-commit) is decided **per module**, not globally — see `docs/PRD.md` §5.0. Settled so far: inventory → direct commit; mandates and grants → confirm-before-commit.
+Commit policy (direct commit vs. confirm-before-commit) is decided **per module**, not globally — see `docs/PRD.md` §5.0. Settled so far: inventory → direct commit; mandates and grants → confirm-before-commit. Categories sidestep the question entirely — they are a form on their own management page, not an interpreted surface (§5.1.1), alongside account creation and budgets.
 
 **The chat app that shipped as Phase 1 has NOT been removed yet — it is still what runs.** `sessions` + `messages` tables, `POST /sessions`, `GET /sessions/{id}/history`, the token-streaming handler in `api/websocket.ts`, the chat generator in `agent/index.ts`, and the React chat UI are all still present. Removing them is prerequisite work ahead of roadmap Phase 1; `docs/ARCHITECTURE.md` → *Removing the chat app* has the checklist.
 

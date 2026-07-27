@@ -18,8 +18,15 @@ tokens, or keep conversation state. Every function here is the same shape:
 ```
 
 The user types *"Add 1984 to my Books"*; the interpretation function returns
-`{ category: "Books", name: "1984", … }`; the API layer validates it and writes the row. The model's
+`{ name: "1984", category_id: "…", … }`; the API layer validates it and writes the row. The model's
 output is an **input to application logic** — it is never sent to the browser as-is.
+
+Note the shape of that category field: the function is handed the user's categories as `{id, name}`
+pairs and must return **either** an existing `category_id` **or** a proposed `new_category` name —
+never a bare category string (`docs/PRD.md` §5.1.1). Free-typed categories drift (`grocery` vs
+`groceries`), and because budgets aggregate spend by category, drift silently splits a budget
+instead of erroring. The same id-resolution rule applies to `inventory_item_id`; the difference is
+that an unresolved *category* is created, while an unresolved *item* is surfaced, never invented.
 
 If you find yourself adding a `messages` array, a system persona, or a streaming generator here,
 stop: that is the chat app being kept alive rather than removed.

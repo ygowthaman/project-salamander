@@ -38,6 +38,13 @@ decision (`docs/PRD.md` §5.0):
 Because both share steps 1–4, switching a module later means adding or removing a `/parse` route and
 a UI step — not rewriting its interpreter.
 
+**Not every module is an interpreted surface.** `categories.ts` is plain CRUD backing a management
+page — no LLM, no `/parse`, no commit-pattern choice to make (`docs/PRD.md` §5.1.1), the same as
+account creation and budgets. Two behaviours there are load-bearing rather than incidental: names
+are unique per user **case-insensitively** (a duplicate is a 409, not a second row), and `DELETE`
+returns a **409 with the item count** when items still reference the category — the FK is
+`ON DELETE RESTRICT`, so a cascade can never quietly take a user's collection with it.
+
 **Validation is not the variable part.** A failed interpretation writes nothing under either
 pattern; direct commit drops the human approval step, not the schema check.
 
@@ -72,7 +79,8 @@ route changes:
   so there is no path parameter to forge and no per-message ownership check to get wrong.
 - **Server → client only.** The client sends nothing; every user action is a REST call. This is a
   notification bus, not an RPC transport.
-- **Typed data events**, not text — `inventory.upserted`, `inventory.deleted`, `cart.updated`,
+- **Typed data events**, not text — `inventory.upserted`, `inventory.deleted`, `category.upserted`,
+  `category.deleted`, `cart.updated`,
   `notification.created`.
 
 It exists because two different things change rows the user is looking at: their own

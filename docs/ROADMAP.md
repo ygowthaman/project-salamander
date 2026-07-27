@@ -37,14 +37,21 @@ _PRD §3, build steps 1–2._
 - **Frontend:** signup / login / logout screens, auth guard, account-settings screen (profile /
   password / delete), all API and WS calls credentialed (`credentials: 'include'`).
 
-### b) Inventory creation — CRUD, full stack
-_PRD §5.1 (precise path), build step 3._
+### b) Categories + inventory creation — CRUD, full stack
+_PRD §5.1, §5.1.1 (precise path), build step 3._
 
+- **`categories` first** — it is a hard dependency, since `inventory_items.category_id` is a NOT
+  NULL FK to it. `UNIQUE (user_id, lower(name))`; `GET/POST/PATCH/DELETE /categories`; delete is
+  `ON DELETE RESTRICT` and returns **409 + item count** rather than cascading.
+- **Categories UI page** — lists the user's categories with item counts, supports create / rename /
+  delete. A form, not natural language (PRD §5.0 exception, alongside account creation and budgets).
 - `inventory_items` + `inventory_events` tables; user-scoped `GET/POST/PATCH/DELETE /inventory` and
   `POST /inventory/{id}/adjust` (set absolute / increment / decrement).
-- Frontend inventory list + create/edit UI.
-- Categories are arbitrary and user-defined; `par_level` / mandate are optional. This delivers
-  **track-only mode** on its own — a usable inventory catalog with no reorder machinery.
+- Frontend inventory list + create/edit UI, with the category as a picker over the user's own
+  categories rather than a free-text field.
+- Category *content* stays arbitrary and user-defined; only its integrity is constrained.
+  `par_level` / mandate are optional. This delivers **track-only mode** on its own — a usable
+  inventory catalog with no reorder machinery.
 
 ### c) Inventory updation — LLM interpret → live update
 _PRD §5.1 / §8.1, **stock-update interpretation target only** (item-definition and mandate/grant
@@ -69,6 +76,15 @@ targets are later phases)._
   spending exist yet. The confirm gate arrives in Phase 2 with mandates and grants, which do drive
   spending. Validation still gates every write — direct commit drops the human approval step, not
   the zod schema check.
+- **Category is a table, `unit` is not** (PRD §5.1.1). Anything the app joins on gets a real row:
+  budgets aggregate spend by category, so as free text an interpreter writing `grocery` then
+  `groceries` would silently split a budget with nothing erroring. `unit` fails that test — nothing
+  joins on it — so it stays free text. The cost is paid in Phase 1 (a table, four routes, a UI
+  page) because retrofitting an FK onto items that already exist is the painful version.
+- **Categories are a form, not natural language.** An explicit exception to the NL-first default,
+  for the same reason budgets are: one bounded field, a small long-lived set, a taxonomy the user
+  curates rather than dictates. The interpreter may still *propose* a new category when adding an
+  item (§5.1.1) — creating one is cheap, visible, and undone with a rename.
 - **User-scoped WebSocket push channel.** The chat socket is deleted; in its place Phase 1 stands up
   a per-user, server→client channel so an inventory write can push its delta to the open UI. The
   channel is derived server-side from the auth session, so it is designed into the auth/WS layer up
@@ -82,7 +98,7 @@ targets are later phases)._
 | Weeks | Work |
 |---|---|
 | 1 – 2.5 | Auth & accounts, full stack (JWT/cookies, CSRF, WS-handshake auth, throttling, lifecycle, frontend flows) + the per-user push channel |
-| 2.5 – 3.5 | Inventory CRUD, full stack (track-only mode usable here) |
+| 2.5 – 3.5 | Categories (table + routes + management page), then inventory CRUD, full stack (track-only mode usable here) |
 | 3.5 – 6 | NL stock-update interpreter (direct commit) → DB → WS push → live UI refresh; eval set + cost logging |
 
 Auth is the long pole — it is security-sensitive and gates everything else. The plan could compress
@@ -114,7 +130,8 @@ _PRD §5.8 / §8.2 (build step 6), plus the inventory NL work deferred from Phas
   answer, and nothing streams. Read-only: no writes, no orders.
 - **Remaining inventory NL operations (pending from Phase 1):** the **item-definition**
   interpretation target (*"Add 1984 to my Books"*, *"start tracking eggs, a dozen is normal"* → a
-  new `inventory_item` with inferred `category` / `unit` / `par_level` / `restock_level`),
+  new `inventory_item` with inferred `unit` / `par_level` / `restock_level` and a category resolved
+  to an existing `category_id` or a proposed `new_category` the server creates — PRD §5.1.1),
   completing the inventory side of the interpretation layer (§8.1) begun with stock updates in
   Phase 1. Direct commit, like the stock-update path it joins.
 

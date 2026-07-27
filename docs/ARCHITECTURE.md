@@ -47,9 +47,11 @@ plain text → LLM interprets → DTO → server validates + commits → WS push
 ```
 
 The user types *"Add 1984 to my Books"*; the model returns
-`{ category: "Books", name: "1984", … }`; the server validates it with zod, writes
-the row, and pushes the new record over that user's WebSocket; the UI clears the
-input and the row appears in the table.
+`{ name: "1984", category_id: "…", … }` — an id resolved from the user's own
+categories, or a proposed `new_category` when none matches ([`PRD.md`](PRD.md)
+§5.1.1); the server validates it with zod, writes the row, and pushes the new
+record over that user's WebSocket; the UI clears the input and the row appears in
+the table.
 
 Every LLM call in the system is **single-turn, non-streaming, and stateless**, and
 returns **structured output** — never prose shown directly to a user. Four jobs,
@@ -250,7 +252,8 @@ scheme is rewritten to plain `postgresql://`, so a stale `.env` keeps working.
 **Today the schema holds exactly two tables — `sessions` and `messages` — and both
 are to be dropped** with the chat app (see
 [Removing the chat app](#removing-the-chat-app)). There are no domain tables yet;
-`users` + `auth_sessions` + `inventory_items` arrive with roadmap Phase 1.
+`users` + `auth_sessions` + `categories` + `inventory_items` arrive with roadmap
+Phase 1.
 
 The target model is specified in [`PRD.md` §6](PRD.md). The conventions it
 inherits, which any new table should follow:
@@ -264,6 +267,11 @@ inherits, which any new table should follow:
 - **`jsonb` only for genuinely open-ended fields** (item `attributes`, fallback
   decisions, notification payloads) — validated with zod at the boundary. Things
   that get queried or constrained are real columns.
+- **Anything the app joins on is a table, not a string.** `category` is the
+  worked example ([`PRD.md`](PRD.md) §5.1.1): budgets aggregate spend by it, so
+  as free text an interpreter writing `grocery` then `groceries` would silently
+  split a budget rather than erroring. `unit` stays free text under the same
+  test — nothing joins on it, and drift there never leaves the row.
 
 Schema lives in `db/schema.ts`; the generated SQL lives in `node-server/drizzle/`.
 Migrations are versioned files applied by `migrate.ts` on startup — replacing any
@@ -469,8 +477,9 @@ and sequenced into phases in [`ROADMAP.md`](ROADMAP.md). In brief:
 1. **Accounts, authentication & sessions** — email + password with a JWT session
    cookie, auth enforced on every REST route and at the WebSocket handshake, plus
    the per-user push channel.
-2. **Inventory** — user-defined categories and stock levels, with
-   natural-language input (direct commit) alongside precise CRUD.
+2. **Inventory** — items and stock levels classified by user-defined categories
+   (a first-class table with its own management page), with natural-language
+   input (direct commit) alongside precise CRUD.
 3. **Search, mandates, grants & budgets** — NL inventory search, deterministic
    reorder triggers, per-item spend caps, and per-period category budgets.
 4. **Carts** — product resolution against a shopping provider, cart review, and
