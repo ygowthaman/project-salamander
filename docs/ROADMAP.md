@@ -23,19 +23,30 @@ and *why*; this file is the authority on *what ships in which phase, and when*.
 Goal: a real multi-user app where each user owns a private inventory, can manage it directly, and
 can update stock levels by typing plain sentences that the LLM parses and applies live.
 
-### a) Accounts, authentication & sessions — full stack
-_PRD §3, build steps 1–2._
+### a) Accounts, authentication & sessions — full stack ✅ *implemented*
+_PRD §3 (incl. §3.7), build steps 1–2._
 
-- **Backend:** `users` + `auth_sessions` tables; argon2id password hashing; JWT access token in an
-  httpOnly / Secure / SameSite cookie; refresh + server-side revocation; Fastify auth `preHandler`
-  plugin; **authentication at the WebSocket handshake**; CSRF defense (SameSite cookie + CSRF token +
-  Origin/Referer check); login throttling/lockout; account lifecycle (`PATCH /auth/me`,
-  change-password with other-session revocation, `DELETE /auth/me` hard-delete cascade).
-- **Schema impact:** the Phase 1 `sessions` and `messages` tables are **dropped** (PRD §3.5) — there
-  is no chat session to scope to a user. The token-streaming WS handler is replaced by the per-user
-  push channel below.
-- **Frontend:** signup / login / logout screens, auth guard, account-settings screen (profile /
-  password / delete), all API and WS calls credentialed (`credentials: 'include'`).
+> **Delivered with Google OAuth in addition to email + password** — overriding PRD §1's
+> password-only lock and §9's "OAuth is a non-goal." Caveat: flows requiring a database round-trip
+> are implemented but not yet verified against a live Postgres, and no account-settings UI exists.
+> See `ARCHITECTURE.md` → Known gaps.
+
+- **Backend:** `users` + `oauth_accounts` + `auth_sessions` tables; argon2id password hashing;
+  **Google OAuth (OIDC authorization-code flow with PKCE)**; JWT access token in an
+  httpOnly / Secure / SameSite cookie; refresh with rotation, server-side revocation and replay
+  detection; Fastify auth `preHandler` plugin; **authentication at the WebSocket handshake**;
+  CSRF defense (SameSite cookie + double-submit token + Origin check); login throttling; account
+  lifecycle (`PATCH /auth/me`, change-password with other-session revocation, `DELETE /auth/me`
+  hard-delete cascade).
+- **Schema impact:** `sessions` gained `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`;
+  `POST /sessions`, history, and the WS handler became user-scoped with ownership checks. That was
+  the right shape for the chat app it landed on, but `sessions` and `messages` are still **dropped**
+  with the chat surface (PRD §3.5) — auth was built to outlive them, and the token-streaming WS
+  handler is replaced by the per-user push channel below.
+- **Frontend:** signup / login / logout screens with a "Continue with Google" button, auth guard,
+  all API and WS calls credentialed (`credentials: 'include'`) with single-flight token refresh.
+  **The account-settings screen (profile / password / delete) is still outstanding** — the routes
+  exist, nothing calls them.
 
 ### b) Categories + inventory creation — CRUD, full stack
 _PRD §5.1, §5.1.1 (precise path), build step 3._

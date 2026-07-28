@@ -9,10 +9,22 @@ Domain route files (auth, inventory, mandates, …) plus the WebSocket push chan
 owns its zod request/response schemas, since no other layer needs them — zod parses the input and
 shapes the output explicitly.
 
+- **auth.ts** — `/auth/*`: signup, login, Google OAuth redirect + callback, refresh, logout, and the account lifecycle routes. The reasoning behind the token, cookie and OAuth design lives in `../auth/AUTH_CONTEXT.md`. This one is already built, and is independent of the chat-app removal.
+
+- **sessions.ts** — the chat REST routes (session creation, message history). To be deleted.
+
 > ⚠️ **This describes the target surface.** Today this folder contains `sessions.ts` (the chat REST
 > routes) and `websocket.ts` (the token-streaming chat socket). Both are **to be deleted** — see
 > `docs/ARCHITECTURE.md` → *Removing the chat app*. There is to be no chat route and no streaming
 > endpoint; the sections below describe what replaces them.
+
+## Authentication and ownership
+
+Every route here requires a signed-in user via the `requireAuth` preHandler. The owner of a new row comes from `request.user`, never from the request body — this is the `user_id` invariant, enforced at the one place that can enforce it.
+
+Reads are scoped by owner in the repository itself — there is no unscoped `getSession`, only `getSessionForUser` — so a route cannot accidentally return another user's row. A row that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists. Domain routes inherit both habits verbatim.
+
+The WebSocket authenticates at the **handshake** (the cookie rides the upgrade request) and validates `Origin` there too, because CORS does not apply to WebSockets. Ownership is then re-checked on every message, not just at connect: the socket can outlive the 15-minute access token, and the account may be deleted mid-connection. The push channel keeps the handshake and the re-check; it just stops carrying messages in the other direction.
 
 ## The interpret flow
 

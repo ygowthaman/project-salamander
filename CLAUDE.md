@@ -29,6 +29,8 @@ Commit policy (direct commit vs. confirm-before-commit) is decided **per module*
 
 Until that lands, expect the code and these docs to disagree: the docs describe the interpreter architecture, the code is still the chat app. When they conflict, **the docs are the spec and the code is the thing to change** — do not "fix" the docs back toward the chat implementation, and do not extend the chat surface.
 
+**Accounts have landed, though — roadmap Phase 1a is real code.** Google OAuth *and* email + password, JWT session cookies with CSRF, `users` / `oauth_accounts` / `auth_sessions` tables, auth enforced on every REST route and at the WebSocket handshake (`node-server/src/auth/`, `docs/ARCHITECTURE.md` → *Authentication*). It currently sits under the chat app — every chat session is owned by a user — and carries over unchanged when that surface is removed, because the per-user push channel derives from the same session.
+
 ## Before Starting Any Work
 
 1. Read `docs/ARCHITECTURE.md` — it is the source of truth for architecture, data model, runtime flows, and deployment. Always check it before making structural decisions. The forward-looking product spec lives in `docs/PRD.md`, and `docs/ROADMAP.md` sequences it into phases.
@@ -38,6 +40,7 @@ Current context files:
 - `node-server/src/db/DB_CONTEXT.md` — database, connectivity, migrations, and repository structure
 - `node-server/src/api/API_CONTEXT.md` — API layer, routing, and the WebSocket push channel
 - `node-server/src/agent/AGENT_CONTEXT.md` — LLM layer: interpretation functions, schemas, prompt caching
+- `node-server/src/auth/AUTH_CONTEXT.md` — accounts, Google OAuth, cookies/CSRF, and why the cookie domain matters
 
 `README.md` covers how to run the server, the client, and the full stack locally.
 

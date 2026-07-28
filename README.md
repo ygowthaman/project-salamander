@@ -21,8 +21,12 @@ for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
 > assistant — `sessions` + `messages` tables, `POST /sessions`, and a
 > token-streaming WebSocket — on a foundation of Fastify, Postgres/Drizzle with
 > startup migrations, and the Anthropic SDK. **Removing that chat surface is the
-> next work**, ahead of roadmap Phase 1 (accounts + inventory). See
+> next work**, ahead of the rest of roadmap Phase 1 (inventory). See
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*.
+>
+> **Accounts are real, though** — sign in with Google or with email + password, JWT
+> session cookies with CSRF, auth enforced on every route and at the WebSocket
+> handshake. That is roadmap Phase 1a, and it stays when the chat surface goes.
 
 | Piece | Stack | Local URL |
 |---|---|---|
@@ -78,16 +82,37 @@ npm install
 npm run dev
 ```
 
-Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it
-applies any pending migrations from `drizzle/`, creating the `sessions` and
-`messages` tables on a first run.
+Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it applies
+any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`,
+`auth_sessions`, `sessions` and `messages` tables on the first run.
+
+> **The auth migration deletes pre-auth chat data.** `0001_auth_users_oauth.sql`
+> drops every row in `sessions` (and their messages, via the cascade) because
+> anonymous conversations have no owner to satisfy the new `NOT NULL user_id`.
+> First run on an existing database wipes that history.
+
+**Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
+`/auth/google` returns 503 and the "Continue with Google" button fails until they
+are set. To enable it, create a Web application OAuth client with the redirect URI
+`http://localhost:8000/auth/google/callback` (see
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §9).
 
 Verify:
 
 ```bash
-curl -X POST http://localhost:8000/sessions \
-  -H 'Content-Type: application/json' -d '{}'
-# {"id":"...","title":"New Session","created_at":"..."}
+# Unauthenticated — expect 401 plus a Set-Cookie minting the CSRF token.
+curl -i http://localhost:8000/auth/me
+# HTTP/1.1 401 Unauthorized
+# set-cookie: sal_csrf=...
+```
+
+`POST /sessions` now requires a session cookie *and* an `X-CSRF-Token` header
+matching the `sal_csrf` cookie, so it is easiest to exercise through the app
+rather than curl. Run the guard-layer checks with:
+
+```bash
+npm test        # tokens, PKCE, CSRF, Origin, auth gating — needs no database
 ```
 
 ### 3. Frontend
@@ -118,6 +143,11 @@ Open **http://localhost:5173**.
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS — must name the origin exactly, no wildcards |
 | `PORT` | `8000` | Cloud Run sets this automatically in production |
 | `HOST` | `0.0.0.0` | |
+| `JWT_SECRET` | dev fallback | Signs access-token JWTs and the OAuth state cookie. Min 32 chars; **required in production** — `openssl rand -base64 32` |
+| `PUBLIC_API_URL` | `http://localhost:8000` | Public origin of this server; Google redirects to `${PUBLIC_API_URL}/auth/google/callback`, which must match the OAuth client exactly |
+| `FRONTEND_URL` | `http://localhost:5173` | Where the browser lands after an OAuth round-trip |
+| `COOKIE_DOMAIN` | *(empty)* | Leave empty locally. In production, the shared registrable domain so one cookie covers the app and API hosts |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(empty)* | Optional — blank means email + password only, with `/auth/google` returning 503 |
 
 `DATABASE_URL` takes a plain `postgresql://` scheme. The old
 `postgresql+asyncpg://` form was SQLAlchemy-specific; the server strips the suffix
@@ -135,6 +165,19 @@ Both are read at build time by Vite. Restart `npm run dev` after changing them.
 ---
 
 ## API
+
+### Auth (built, and staying)
+
+`POST /auth/signup` · `POST /auth/login` · `GET /auth/google` ·
+`GET /auth/google/callback` · `POST /auth/refresh` · `POST /auth/logout` ·
+`GET /auth/me` · `PATCH /auth/me` · `POST /auth/change-password` ·
+`DELETE /auth/me`.
+
+Access token in an httpOnly cookie, refresh with rotation and server-side
+revocation, double-submit CSRF token on every mutating request, `Origin` checked
+at the WebSocket handshake. Signup and login are rate-limited. The design
+reasoning is in
+[`node-server/src/auth/AUTH_CONTEXT.md`](node-server/src/auth/AUTH_CONTEXT.md).
 
 ### Today (chat app — to be removed)
 
@@ -168,9 +211,10 @@ All three endpoints go away with the chat app
 with the `sessions`/`messages` tables. A `GET /health` gets added in the same
 change so the service stays verifiable while it has no other routes.
 
-The routes that replace them — auth, inventory, and the per-user WebSocket push
-channel — are specified in [`docs/PRD.md`](docs/PRD.md) §7 and sequenced in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
+The routes that replace them — inventory, categories, and the per-user WebSocket
+push channel — are specified in [`docs/PRD.md`](docs/PRD.md) §7 and sequenced in
+[`docs/ROADMAP.md`](docs/ROADMAP.md). The auth routes above are already there and
+are unaffected by the removal.
 
 Two conventions those routes will follow, worth knowing before you add one:
 

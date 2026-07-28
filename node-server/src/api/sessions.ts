@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { requireAuth } from "../auth/plugin.js";
 import { db } from "../db/client.js";
 import * as messagesRepo from "../db/repositories/messages.js";
 import * as sessionsRepo from "../db/repositories/sessions.js";
@@ -13,13 +14,18 @@ const sessionIdParams = z.object({
 });
 
 export const sessionsRoutes: FastifyPluginAsync = async (app) => {
-  app.post("/sessions", async (request, reply) => {
+  app.post("/sessions", { preHandler: requireAuth }, async (request, reply) => {
     const parsed = createSessionBody.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
 
-    const session = await sessionsRepo.createSession(db, parsed.data.title || "New Session");
+    // Owner comes from the verified cookie, never from the request body.
+    const session = await sessionsRepo.createSession(
+      db,
+      request.user!.id,
+      parsed.data.title || "New Session",
+    );
 
     return {
       id: session.id,
@@ -28,14 +34,16 @@ export const sessionsRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.get("/sessions/:session_id/history", async (request, reply) => {
+  app.get("/sessions/:session_id/history", { preHandler: requireAuth }, async (request, reply) => {
     const parsed = sessionIdParams.safeParse(request.params);
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
     const sessionId = parsed.data.session_id;
 
-    const session = await sessionsRepo.getSession(db, sessionId);
+    // 404 rather than 403 for someone else's session — a 403 would confirm the
+    // id exists.
+    const session = await sessionsRepo.getSessionForUser(db, sessionId, request.user!.id);
     if (!session) {
       return reply.code(404).send({ detail: "Session not found" });
     }

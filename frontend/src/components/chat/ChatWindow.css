@@ -3,11 +3,27 @@
 }
 
 .chat-window__header {
-  @apply flex items-center px-4 py-3 border-b border-gray-200 bg-white;
+  @apply flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-200 bg-white;
 }
 
 .chat-window__title {
   @apply text-base font-semibold text-gray-900;
+}
+
+.chat-window__account {
+  @apply flex items-center gap-2 min-w-0;
+}
+
+.chat-window__avatar {
+  @apply w-6 h-6 rounded-full shrink-0;
+}
+
+.chat-window__user {
+  @apply text-xs text-gray-500 truncate max-w-[12rem];
+}
+
+.chat-window__signout {
+  @apply text-xs text-gray-500 hover:text-gray-900 underline shrink-0 transition-colors;
 }
 
 .chat-window__messages {

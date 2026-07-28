@@ -22,7 +22,10 @@ flows, deployment shape, and the decisions behind them.
 
 - **What exists today:** the Phase 1 chat app (above), on a foundation of Fastify
   bootstrap, Postgres + Drizzle with migrations applied on startup, the Anthropic
-  SDK, and a Vite frontend. No auth, no domain tables.
+  SDK, and a Vite frontend — plus **authentication**, which is real and staying:
+  accounts via Google OAuth and email + password, `users` / `oauth_accounts` /
+  `auth_sessions`, auth on every route and at the WS handshake (roadmap Phase 1a,
+  see [Authentication](#authentication)). No domain tables yet.
 - **What gets removed first:** the entire chat surface — see
   [Removing the chat app](#removing-the-chat-app) for the checklist.
 - **Where it's going:** accounts, inventory, mandates, budgets, a reorder
@@ -93,7 +96,7 @@ What has to go:
 | Repositories | `src/db/repositories/{sessions,messages}.ts` | |
 | Schema | `sessions` + `messages` in `src/db/schema.ts` | Plus a drop migration — see below |
 | Frontend | `components/chat/`, `hooks/useWebSocket.ts`, `api/sessions.ts`, `types/index.ts` | `App.tsx` needs a new root |
-| Composition root | Route registrations in `src/server.ts` | Leaves the app with no routes until auth lands |
+| Composition root | Chat route registrations in `src/app.ts` | The auth routes registered alongside them stay |
 
 Notes on doing it:
 
@@ -102,14 +105,16 @@ Notes on doing it:
 - **Write a drop migration, don't edit `0000_init.sql`.** Drop `messages` before
   `sessions` — the FK points that way. Never hand-edit a migration that has
   already been applied.
-- **`drizzle-kit generate` cannot diff this repo.** `meta/*_snapshot.json` was
-  never committed (`0000_init` has none either), so the drop migration and its
-  `meta/_journal.json` entry have to be hand-written. Worth fixing the snapshot
-  gap before the auth migrations land, or `generate` will keep misbehaving.
+- **`0000_init` still has no `meta/*_snapshot.json`.** The auth migration
+  (`0001_auth_users_oauth`) did commit one, so `drizzle-kit generate` can diff
+  forward from there; check its output against a hand-written drop rather than
+  trusting it blind, and add the `meta/_journal.json` entry either way.
 - **Local dev databases carry chat rows.** The drop is destructive; the data is
   throwaway, but say so rather than surprising someone.
-- **The backend is left with no routes.** Add a `GET /health` in the same change
-  so the service stays verifiable and deployable until auth arrives.
+- **The backend is not left bare — auth remains.** Still add a `GET /health` in
+  the same change, so liveness does not depend on an authenticated route.
+- **Auth is untouched by this.** `sessions.user_id` disappears with its table;
+  `users`, `oauth_accounts`, and `auth_sessions` are independent of it.
 
 ---
 
@@ -119,8 +124,9 @@ Notes on doing it:
 |---|---|
 | Frontend | React + Vite + TypeScript |
 | Backend | Node.js 20 + TypeScript + Fastify |
-| LLM | Claude API via the Anthropic TypeScript SDK |
+| LLM | Claude API via the Anthropic TypeScript SDK (`claude-sonnet-4-6`) |
 | Real-time | WebSockets (`@fastify/websocket`) — server→client push only |
+| Auth | Google OAuth 2.0 (OIDC + PKCE) and email + password (argon2id); JWT access cookie via `jose` |
 | Database | PostgreSQL 16 + Drizzle ORM over `pg` (node-postgres) |
 | Migrations | `drizzle-kit` — versioned SQL applied on server startup |
 | Validation | zod — at the HTTP boundary *and* on every LLM response |
@@ -147,6 +153,7 @@ Frontend — static React build (Vite) served by a web server / CDN
   ▼
 Backend — Node + Fastify
   ├── REST routes ......... src/api/*
+  ├── Auth ................ src/auth/*   ──► cookies, JWT, Google OIDC
   ├── Push channel ........ src/api/websocket.ts
   ├── Agent (Claude) ...... src/agent/*  ──► Anthropic API (non-streaming)
   └── DB access ........... src/db/*
@@ -165,36 +172,70 @@ losing it costs nothing durable — every view is re-fetchable over REST.
 ## Backend
 
 The backend lives in `node-server/`. It is a small Fastify application composed of
-layers with a strict dependency direction: **api → agent, api → db**. The agent
-and db layers know nothing about each other or about routing.
+layers with a strict dependency direction: **api → agent, api → auth, api → db**.
+The agent, auth and db layers know nothing about each other or about routing.
 
 The layout below is the **target**: the folders exist today, but `agent/` holds the
 chat generator and `api/` holds the chat routes until the removal lands.
 
 ```
 node-server/src/
-├── server.ts              Fastify bootstrap: CORS, plugin/route registration,
-│                          startup migrations, graceful shutdown
+├── server.ts              Bootstrap: migrations, listen, graceful shutdown
+├── app.ts                 Composition root: builds the wired Fastify instance
 ├── agent/                 LLM layer — interpretation functions (one per target),
 │                          each owning its prompt + tool schema
+│                          (today: `index.ts`, the chat streaming generator)
+├── auth/                  Built, and unaffected by the chat removal
+│   ├── config.ts          Env resolution (Google credentials optional)
+│   ├── tokens.ts          Access-JWT sign/verify; refresh mint + hash
+│   ├── cookies.ts         Cookie names, scopes and flags
+│   ├── password.ts        argon2id hashing and constant-cost verification
+│   ├── google.ts          PKCE authorize URL, code exchange, ID-token verify
+│   └── plugin.ts          Root-level identify / CSRF / Origin hooks
 ├── api/                   REST route plugins + the WebSocket push channel
+│   ├── auth.ts            /auth/* routes + zod schemas
+│   ├── sessions.ts        Chat REST routes — to be deleted
+│   └── websocket.ts       Chat WS handler (/ws/:session_id) — to be replaced
 └── db/
     ├── client.ts          pg.Pool + Drizzle instance; Db / DbExecutor types
     ├── schema.ts          Drizzle table definitions + inferred row types
     ├── migrate.ts         Startup migration runner (also `npm run db:migrate`)
     └── repositories/      Query logic, one module per table
+        ├── users.ts          Query logic for the users table
+        ├── oauthAccounts.ts  Provider identity links
+        ├── authSessions.ts   Refresh-token records and revocation
+        ├── sessions.ts       Chat sessions — to be deleted
+        └── messages.ts       Chat messages — to be deleted
 ```
 
 Each folder carries a `*_CONTEXT.md` explaining the "why" behind its design:
-`db/DB_CONTEXT.md`, `api/API_CONTEXT.md`, `agent/AGENT_CONTEXT.md`.
+`db/DB_CONTEXT.md`, `api/API_CONTEXT.md`, `agent/AGENT_CONTEXT.md`,
+`auth/AUTH_CONTEXT.md`.
 
-### `server.ts` — composition root
+### `app.ts` / `server.ts` — composition root
 
-Loads `dotenv`, constructs the Fastify instance, registers CORS (credentialed,
-scoped to `ALLOWED_ORIGINS`), the WebSocket plugin, and the route plugins. On boot
-it runs pending migrations **before** listening, and wires `SIGINT`/`SIGTERM` to
-close the server and drain the pg pool. Port defaults to `8000` locally; the
-container sets `PORT=8080`.
+`app.ts` builds the fully-wired Fastify instance without binding a port: CORS
+(credentialed, scoped to `ALLOWED_ORIGINS`, explicitly allowing `X-CSRF-Token`),
+rate limiting, cookie parsing and the global auth hooks, the WebSocket plugin,
+and the three route plugins. Keeping it separate from the listen bootstrap is
+what lets `npm test` exercise the guards with `app.inject()` and no database.
+
+`server.ts` loads `dotenv`, calls `buildApp()`, runs pending migrations **before**
+listening, and wires `SIGINT`/`SIGTERM` to close the server and drain the pg
+pool. Port defaults to `8000` locally; the container sets `PORT=8080`.
+
+### `auth/` — identity
+
+Owns accounts, credentials and session cookies; knows nothing about chat. A
+15-minute access JWT rides in an httpOnly cookie (so the WebSocket upgrade
+carries it automatically), backed by opaque, rotating refresh tokens whose
+SHA-256 lives in `auth_sessions` for revocation. Google sign-in is OIDC with
+PKCE, linked on the provider's stable `sub` claim. See `auth/AUTH_CONTEXT.md`
+for the reasoning, including why the cookie domain dictates the deployment shape.
+
+It also knows nothing about interpretation, which is why it survives the chat
+removal intact: it supplies `request.user`, and every domain route and the push
+channel take their `user_id` from there.
 
 ### `api/` — the HTTP surface
 
@@ -249,14 +290,70 @@ scheme is rewritten to plain `postgresql://`, so a stale `.env` keeps working.
 
 ## Data model
 
-**Today the schema holds exactly two tables — `sessions` and `messages` — and both
-are to be dropped** with the chat app (see
-[Removing the chat app](#removing-the-chat-app)). There are no domain tables yet;
-`users` + `auth_sessions` + `categories` + `inventory_items` arrive with roadmap
-Phase 1.
+**Today the schema holds five tables.** The three auth tables below (`users`,
+`oauth_accounts`, `auth_sessions`) are the shipped Phase 1a model and stay;
+`sessions` and `messages` are **to be dropped** with the chat app (see
+[Removing the chat app](#removing-the-chat-app)). The domain tables —
+`categories`, `inventory_items`, and the rest — arrive with roadmap Phase 1b, and
+the target model for them is specified in [`PRD.md` §6](PRD.md).
 
-The target model is specified in [`PRD.md` §6](PRD.md). The conventions it
-inherits, which any new table should follow:
+```sql
+users
+  id             UUID PRIMARY KEY
+  email          TEXT NOT NULL          -- stored lowercased; UNIQUE index
+  password_hash  TEXT                   -- NULL for Google-only accounts
+  display_name   TEXT
+  avatar_url     TEXT
+  email_verified BOOLEAN NOT NULL DEFAULT false
+  created_at, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+
+oauth_accounts                          -- one row per linked provider identity
+  id                  UUID PRIMARY KEY
+  user_id             UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  provider            TEXT NOT NULL     -- 'google'
+  provider_account_id TEXT NOT NULL     -- Google's stable `sub`, never the email
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+  UNIQUE (provider, provider_account_id)
+
+auth_sessions                           -- refresh tokens; existence = revocable
+  id                 UUID PRIMARY KEY
+  user_id            UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  refresh_token_hash TEXT NOT NULL UNIQUE   -- SHA-256; never the raw token
+  user_agent, ip     TEXT
+  expires_at         TIMESTAMPTZ NOT NULL
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  revoked_at         TIMESTAMPTZ
+
+sessions                                -- chat; dropped with the chat app
+  id          UUID PRIMARY KEY          -- app-generated (crypto.randomUUID)
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+  title       TEXT NOT NULL             -- e.g. "New Session" or a chosen title
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+
+messages                                -- chat; dropped with the chat app
+  id          UUID PRIMARY KEY          -- app-generated (crypto.randomUUID)
+  session_id  UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
+  role        TEXT NOT NULL             -- 'user' | 'assistant'
+  content     TEXT NOT NULL
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+
+-- index backing the history query (session_id filter + created_at ordering)
+messages_session_id_created_at_idx ON messages (session_id, created_at)
+-- index backing "list my chat sessions, newest first"
+sessions_user_id_created_at_idx    ON sessions (user_id, created_at)
+```
+
+> **Migration note.** `0001_auth_users_oauth.sql` **deletes all pre-auth chat
+> sessions** (and their messages, via the cascade). Those rows were created
+> anonymously and have no owner to satisfy the new `NOT NULL user_id`. It is
+> also hand-written rather than generated: `drizzle/meta/0000_snapshot.json` was
+> never committed, so `drizzle-kit generate` diffed against an empty database and
+> emitted `CREATE TABLE IF NOT EXISTS "sessions"` — a silent no-op on a live
+> database that would never have added the column. The 0001 snapshot now
+> describes the real post-state, so later migrations can go back to being
+> generated.
+
+The conventions these tables set, which any new table should follow:
 
 - **App-generated UUIDs.** IDs are minted in the application via
   `crypto.randomUUID` rather than by `gen_random_uuid()`, so no `pgcrypto`
@@ -284,9 +381,46 @@ applied anywhere.
 
 ## Runtime flows
 
-**Both flows below are planned.** Neither exists in the code yet — today the only
-runtime flow is the chat turn loop in `api/websocket.ts`, which both of these
-replace.
+**Authentication is shipped; the interpret and push flows are planned.** Neither
+of the latter exists in the code yet — today the other runtime flow is the chat
+turn loop in `api/websocket.ts`, which both of them replace.
+
+### Authentication
+
+Two ways in, one session model.
+
+- **Email + password** — `POST /auth/signup` / `POST /auth/login`. Passwords are
+  argon2id. Login returns an identical `401` for unknown-email, wrong-password
+  and Google-only accounts, and burns the same wall-clock time in each case, so
+  neither the response nor its timing reveals whether an account exists.
+- **Google** — `GET /auth/google` redirects to Google with PKCE plus a `state`
+  value held in a signed httpOnly cookie; `GET /auth/google/callback` verifies
+  `state`, exchanges the code, and validates the ID token against Google's JWKS
+  (checking **issuer and audience**).
+
+Either path ends at the same place: a 15-minute access JWT in an httpOnly
+cookie, plus an opaque refresh token whose SHA-256 is recorded in
+`auth_sessions`. `POST /auth/refresh` **rotates** — it revokes the presented
+record and issues a new one — and treats a replayed, already-revoked token as a
+compromise signal, revoking every session for that user.
+
+Google identities are linked on the provider's stable `sub`. If the email
+matches an existing password account, the two are linked **only when Google
+asserts the address is verified**; otherwise the attempt is refused, because
+auto-linking an unverified address is an account-takeover path.
+
+```
+1. GET /auth/google        → 302 to accounts.google.com   (state + PKCE cookie)
+2. user consents           → 302 back to /auth/google/callback?code&state
+3. verify state → exchange code → verify ID token (iss + aud)
+4. find oauth_accounts by (google, sub)
+     hit  → that user
+     miss → match on verified email → link, else create user
+5. issue access + refresh cookies → 302 to the frontend
+```
+
+This flow is independent of the chat removal. Every flow below assumes it: the
+authenticated user id is where `user_id` comes from, always server-side.
 
 ### The interpret flow
 
@@ -321,6 +455,12 @@ Validation is not what varies. A failed interpretation persists nothing under
 either pattern — direct commit skips the *human approval* step, not the schema
 gate. Because both patterns share steps 1–4, a module can switch later by adding
 or removing a `/parse` route and a UI step, not by rewriting its extractor.
+
+Two habits from the chat turn loop outlive it and apply here: **never hold a
+transaction across a model call** (do the reads in one short transaction, call
+Claude with none open, persist in another), and **re-check ownership on every
+message rather than only at the handshake** — a socket outlives the 15-minute
+access token, and the account may be deleted mid-connection.
 
 ### The WebSocket push channel
 
@@ -362,10 +502,15 @@ one-hour cap on socket lifetime.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required. Read automatically by the Anthropic SDK. |
 | `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping`. |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS means this must name the frontend origin exactly — no wildcards. |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS means this must name the frontend origin exactly — no wildcards. Also gates mutation `Origin` checks and the WS handshake. |
 | `PORT` | `8000` | The container image sets `8080`. |
 | `HOST` | `0.0.0.0` | |
-| `JWT_SECRET` | — | Required once auth lands; Secret Manager in prod. |
+| `JWT_SECRET` | *(dev fallback)* | Signs access tokens and the OAuth state cookie. Min 32 chars; **required in production**. |
+| `PUBLIC_API_URL` | `http://localhost:8000` | This server's public origin. `${PUBLIC_API_URL}/auth/google/callback` must match an Authorised redirect URI on the OAuth client. |
+| `FRONTEND_URL` | `http://localhost:5173` | Where the browser lands after OAuth. |
+| `COOKIE_DOMAIN` | *(unset)* | `axoliz.ai` in production so one cookie spans frontend and API. Leave empty locally. |
+| `GOOGLE_CLIENT_ID` | *(unset)* | Optional — without it the server runs password-only and `/auth/google` returns 503. |
+| `GOOGLE_CLIENT_SECRET` | *(unset)* | As above. |
 
 ### Frontend — `frontend/.env`
 
@@ -419,10 +564,34 @@ of this loses durable data. A dropped socket means the UI is stale until the nex
 REST fetch — no more. That is a materially weaker requirement than it was for
 token streaming, where a dropped socket lost the response mid-sentence.
 
+**The backend must be served from `api.axoliz.ai`, not its `run.app` URL.** This
+is an auth constraint, not cosmetics. Auth cookies are `SameSite=Lax`, which
+means the browser omits them on **cross-site** requests. `run.app` is on the
+Public Suffix List, so `salamander-server-….run.app` and `salamander.axoliz.ai`
+are different sites — every authenticated call from the frontend would arrive
+without a cookie and 401, while working perfectly on localhost. Mapping the
+service to `api.axoliz.ai` puts both sides under the `axoliz.ai` registrable
+domain, and `COOKIE_DOMAIN=axoliz.ai` issues one cookie that covers both.
+
+The alternative — `SameSite=None; Secure` — would work on the `run.app` URL today
+but is a third-party cookie: already blocked by Safari ITP and Firefox, and on
+Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
+
 ---
 
 ## Known gaps
 
+- **Auth flows that touch the database are untested.** `npm test` covers the
+  guard layer (tokens, PKCE, CSRF, Origin, auth gating) with no database needed,
+  but signup, login, the OAuth callback and refresh rotation have no automated
+  coverage. `0001_auth_users_oauth.sql` has also never been applied to a live
+  Postgres.
+- **No email verification or password reset.** `users.email_verified` is set by
+  Google but there is no mail transport, so a password account can never verify
+  and a forgotten password cannot be reset. PRD §12.6 still owns that decision.
+- **No account-settings UI.** `PATCH /auth/me`, `POST /auth/change-password` and
+  `DELETE /auth/me` exist and are enforced, but nothing in the frontend calls
+  them yet — sign-in, sign-up and sign-out are the only wired flows.
 - **No client-side WebSocket reconnect.** `frontend/src/hooks/useWebSocket.ts`
   has no `onclose` handling today, and the push channel that replaces it inherits
   the gap unless it is fixed deliberately. A dropped socket — Cloud Run timeout, scale-down, laptop sleep, flaky
@@ -464,6 +633,24 @@ token streaming, where a dropped socket lost the response mid-sentence.
 - **Explicit migrations over sync-on-startup** — `drizzle-kit` produces versioned
   SQL applied at boot, which can alter existing tables, not just create missing
   ones.
+- **Auth cookies over bearer tokens** — httpOnly removes the XSS token-theft
+  class, and the cookie rides the WebSocket upgrade automatically (a browser
+  cannot set headers on `new WebSocket()`). The cost is that the API must share a
+  registrable domain with the frontend.
+- **OAuth linked on the provider's `sub`, never email** — a Google account's
+  email can change; `sub` cannot. Linking to an existing password account
+  requires Google to assert the email is verified, or it is an account-takeover
+  path.
+- **Opaque, rotating refresh tokens with replay detection** — revocation becomes
+  a row update rather than a JWT blocklist, and a replayed token revokes the
+  user's whole session family.
+- **Constant-cost password verification** — argon2 runs even when the account has
+  no password, so timing cannot distinguish "no such user" from "Google-only
+  account" from "wrong password".
+- **Self-managed Postgres on a Compute Engine VM, reached over Direct VPC
+  egress** — cheaper than Cloud SQL at this size, at the cost of running the
+  database yourself. See [`DEPLOYMENT.md`](DEPLOYMENT.md) for the as-built
+  topology and the migration path back to Cloud SQL.
 - **One language end to end** — shared types and tooling across backend and
   frontend; ML work would arrive as a separate service.
 
@@ -474,9 +661,11 @@ token streaming, where a dropped socket lost the response mid-sentence.
 The forward-looking product direction is specified in full in [`PRD.md`](PRD.md)
 and sequenced into phases in [`ROADMAP.md`](ROADMAP.md). In brief:
 
-1. **Accounts, authentication & sessions** — email + password with a JWT session
-   cookie, auth enforced on every REST route and at the WebSocket handshake, plus
-   the per-user push channel.
+1. ~~**Accounts, authentication & sessions**~~ — **shipped, described above.**
+   Delivered with **Google OAuth in addition to** email + password, which
+   overrides PRD §1's password-only lock and §9's "OAuth is a non-goal"; the rest
+   of PRD §3 was followed as specified. The per-user push channel is the piece
+   still outstanding — it arrives with the chat removal.
 2. **Inventory** — items and stock levels classified by user-defined categories
    (a first-class table with its own management page), with natural-language
    input (direct commit) alongside precise CRUD.

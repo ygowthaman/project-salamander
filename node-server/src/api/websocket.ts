@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { streamResponse, type AgentMessage } from "../agent/index.js";
+import { allowedOrigins, requireAuth } from "../auth/plugin.js";
 import { db } from "../db/client.js";
 import * as messagesRepo from "../db/repositories/messages.js";
 import * as sessionsRepo from "../db/repositories/sessions.js";
@@ -11,10 +12,26 @@ const uuidSchema = z.string().uuid();
 export const websocketRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { session_id: string } }>(
     "/ws/:session_id",
-    { websocket: true },
+    {
+      websocket: true,
+      // Authenticate at the handshake, before the upgrade completes: the auth
+      // cookie rides along with the upgrade request, so an unauthenticated
+      // client never gets a socket at all.
+      preHandler: async (request, reply) => {
+        // A cross-site page must not be able to open an authenticated socket.
+        // CORS does not apply to WebSockets, so this check is the only thing
+        // standing between an attacker's page and the user's cookie.
+        const origin = request.headers.origin;
+        if (origin && !allowedOrigins().includes(origin)) {
+          return reply.code(403).send({ detail: "Origin not allowed" });
+        }
+        return requireAuth(request, reply);
+      },
+    },
     (connection, request) => {
       const socket = connection.socket;
       const sessionId = request.params.session_id;
+      const userId = request.user!.id;
 
       const send = (payload: unknown) => {
         if (socket.readyState === socket.OPEN) {
@@ -51,7 +68,10 @@ export const websocketRoutes: FastifyPluginAsync = async (app) => {
         // Each incoming message gets its own scoped transaction rather than one
         // held open for the socket's lifetime.
         const history = await db.transaction(async (tx) => {
-          const session = await sessionsRepo.getSession(tx, sessionId);
+          // Ownership is re-checked every turn, not just at the handshake: the
+          // socket outlives the 15-minute access token, and the account may be
+          // deleted mid-connection (which cascades this session away).
+          const session = await sessionsRepo.getSessionForUser(tx, sessionId, userId);
           if (!session) return null;
 
           const prior = await messagesRepo.getHistory(tx, sessionId);
