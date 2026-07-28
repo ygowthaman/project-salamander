@@ -4,7 +4,6 @@
  * database — run it with `npm test`.
  */
 process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/unused";
-process.env.ANTHROPIC_API_KEY = "sk-ant-dummy";
 process.env.ALLOWED_ORIGINS = "http://localhost:5173";
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-32ch";
 
@@ -103,8 +102,19 @@ console.log("\ncsrf enforcement on mutations");
 
 console.log("\nauth guards");
 {
-  const res = await app.inject({ method: "GET", url: "/sessions/not-a-uuid/history" });
-  check("GET /sessions history requires auth", res.statusCode === 401, `got ${res.statusCode}`);
+  // CSRF-valid but unauthenticated: proves the 401 comes from requireAuth, not
+  // from the CSRF hook short-circuiting ahead of it.
+  const res = await app.inject({
+    method: "PATCH",
+    url: "/auth/me",
+    cookies: { sal_csrf: "aaa" },
+    headers: { "x-csrf-token": "aaa", origin: "http://localhost:5173" },
+    payload: { display_name: "x" },
+  });
+  check("PATCH /auth/me requires auth", res.statusCode === 401, `got ${res.statusCode}`);
+
+  const health = await app.inject({ method: "GET", url: "/health" });
+  check("GET /health is public", health.statusCode === 200, `got ${health.statusCode}`);
 
   const google = await app.inject({ method: "GET", url: "/auth/google" });
   check("/auth/google is 503 unconfigured", google.statusCode === 503, `got ${google.statusCode}`);

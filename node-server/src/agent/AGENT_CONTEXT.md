@@ -3,10 +3,10 @@
 This is the LLM layer of the backend. It is intentionally isolated from routing and database
 concerns — its only job is to talk to Claude and hand back **structured, parsed data**.
 
-> ⚠️ **This describes the target, not `index.ts` as it stands.** Today this folder contains the
-> Phase 1 chat streaming generator — a system prompt with an assistant persona and an async
-> generator that yields `text_delta` chunks. It is **to be deleted**, not refactored; see
-> `docs/ARCHITECTURE.md` → *Removing the chat app*. Everything below is what replaces it.
+> **The folder is empty of code right now.** The Phase 1 chat streaming generator that used to be
+> `index.ts` — assistant persona, `text_delta` chunks — was deleted with the rest of the chat app,
+> and it was deleted rather than refactored on purpose. Everything below specifies what gets
+> written here instead, starting with the stock-update interpreter in roadmap Phase 1b.
 
 ## The model is an interpreter, not a conversationalist
 

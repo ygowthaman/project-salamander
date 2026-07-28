@@ -16,17 +16,13 @@ never prose shown to a user. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
 [`docs/ROADMAP.md`](docs/ROADMAP.md) for what ships when.
 
-> **Current state: the Phase 1 chat app is still what runs.** The interpreter
-> model above is the *target*, not the code. What exists today is a streaming chat
-> assistant — `sessions` + `messages` tables, `POST /sessions`, and a
-> token-streaming WebSocket — on a foundation of Fastify, Postgres/Drizzle with
-> startup migrations, and the Anthropic SDK. **Removing that chat surface is the
-> next work**, ahead of the rest of roadmap Phase 1 (inventory). See
-> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*.
->
-> **Accounts are real, though** — sign in with Google or with email + password, JWT
-> session cookies with CSRF, auth enforced on every route and at the WebSocket
-> handshake. That is roadmap Phase 1a, and it stays when the chat surface goes.
+> **Current state: accounts, and not much else yet.** Sign in with Google or with
+> email + password — JWT session cookies with CSRF, auth enforced on every route
+> (roadmap Phase 1a) — on a foundation of Fastify, Postgres/Drizzle with startup
+> migrations. The Phase 1 chat app that used to sit on top of this **has been
+> removed** ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat
+> app*); the interpreter model above is the *target*, and inventory is the next
+> thing to land.
 
 | Piece | Stack | Local URL |
 |---|---|---|
@@ -42,7 +38,8 @@ for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
 - **Node.js 20+** — the server runs on 18, but `drizzle-kit` (used to generate
   migrations) requires 20
 - **PostgreSQL 16** — installed locally (below)
-- **An Anthropic API key** — https://console.anthropic.com
+- **An Anthropic API key** — https://console.anthropic.com. Not needed to run
+  what exists today; the interpretation layer will want it.
 
 ---
 
@@ -77,19 +74,20 @@ password `postgres`, database `shopping` — matching the `DATABASE_URL` in
 
 ```bash
 cd node-server
-cp .env.example .env      # then edit .env and paste your real API key
+cp .env.example .env      # defaults work locally; no API key needed yet
 npm install
 npm run dev
 ```
 
 Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it applies
-any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`,
-`auth_sessions`, `sessions` and `messages` tables on the first run.
+any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`
+and `auth_sessions` tables on the first run.
 
-> **The auth migration deletes pre-auth chat data.** `0001_auth_users_oauth.sql`
-> drops every row in `sessions` (and their messages, via the cascade) because
-> anonymous conversations have no owner to satisfy the new `NOT NULL user_id`.
-> First run on an existing database wipes that history.
+> **The chat migrations are destructive, by design.** On an existing database,
+> `0001_auth_users_oauth.sql` deletes the pre-auth chat sessions (anonymous rows
+> with no owner for its new `NOT NULL user_id`) and `0002_drop_chat.sql` then
+> drops the `sessions` and `messages` tables outright. Any local chat history
+> disappears on the next boot.
 
 **Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
@@ -107,8 +105,13 @@ curl -i http://localhost:8000/auth/me
 # set-cookie: sal_csrf=...
 ```
 
-`POST /sessions` now requires a session cookie *and* an `X-CSRF-Token` header
-matching the `sal_csrf` cookie, so it is easiest to exercise through the app
+```bash
+curl http://localhost:8000/health
+# {"status":"ok"}
+```
+
+Every other route requires a session cookie *and* an `X-CSRF-Token` header
+matching the `sal_csrf` cookie, so they are easiest to exercise through the app
 rather than curl. Run the guard-layer checks with:
 
 ```bash
@@ -126,9 +129,12 @@ npm run dev
 
 Open **http://localhost:5173**.
 
-> **The frontend `.env` is not optional.** `VITE_WS_URL` falls back to a LAN
-> address from a previous dev machine, so leaving it unset gives you working REST
-> calls and a chat that silently never connects.
+You get the login screen, and a placeholder shell once signed in — the inventory
+UI is the next thing to land there.
+
+> `VITE_WS_URL` is currently unused: the chat socket is gone and the per-user push
+> channel that replaces it has not been built. Set it correctly anyway, or the
+> first thing that opens a socket will inherit a stale default.
 
 ---
 
@@ -138,7 +144,7 @@ Open **http://localhost:5173**.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Required. Read automatically by the Anthropic SDK |
+| `ANTHROPIC_API_KEY` | — | Unused until the interpretation layer lands; read automatically by the Anthropic SDK when it does |
 | `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping` |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS — must name the origin exactly, no wildcards |
 | `PORT` | `8000` | Cloud Run sets this automatically in production |
@@ -158,7 +164,7 @@ if it finds one, but new config should not include it.
 | Variable | Default | Notes |
 |---|---|---|
 | `VITE_API_URL` | `http://localhost:8000` | REST base URL |
-| `VITE_WS_URL` | `ws://192.168.1.103:8000` | **Set this** — the default is a stale LAN IP |
+| `VITE_WS_URL` | `ws://192.168.1.103:8000` | Unused until the push channel lands. Set it anyway — the default is a stale LAN IP |
 
 Both are read at build time by Vite. Restart `npm run dev` after changing them.
 
@@ -166,7 +172,7 @@ Both are read at build time by Vite. Restart `npm run dev` after changing them.
 
 ## API
 
-### Auth (built, and staying)
+### Today
 
 `POST /auth/signup` · `POST /auth/login` · `GET /auth/google` ·
 `GET /auth/google/callback` · `POST /auth/refresh` · `POST /auth/logout` ·
@@ -175,46 +181,22 @@ Both are read at build time by Vite. Restart `npm run dev` after changing them.
 
 Access token in an httpOnly cookie, refresh with rotation and server-side
 revocation, double-submit CSRF token on every mutating request, `Origin` checked
-at the WebSocket handshake. Signup and login are rate-limited. The design
-reasoning is in
+at the WebSocket handshake (once a socket exists again). Signup and login are
+rate-limited. The design reasoning is in
 [`node-server/src/auth/AUTH_CONTEXT.md`](node-server/src/auth/AUTH_CONTEXT.md).
 
-### Today (chat app — to be removed)
+**`GET /health`** — `{ "status": "ok" }`. Unauthenticated and database-free: it
+reports that the process is serving, not that Postgres is reachable.
 
-**`POST /sessions`** — create a chat session.
+That is the whole surface. The chat endpoints (`POST /sessions`,
+`GET /sessions/{id}/history`, `WS /ws/{session_id}`) and their tables are gone —
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*.
 
-```jsonc
-// request  — title optional, defaults to "New Session"
-{ "title": "Laptop hunt" }
-// response 200
-{ "id": "<uuid>", "title": "Laptop hunt", "created_at": "<ISO 8601>" }
-```
+### Next
 
-**`GET /sessions/{session_id}/history`** — messages oldest first; `404` if the
-session does not exist.
-
-**`WS /ws/{session_id}`** — one frame per user turn:
-
-```jsonc
-// client → server
-{ "message": "I need a laptop under $800" }
-// server → client
-{ "type": "chunk", "text": "..." }   // one per streamed chunk
-{ "type": "done" }                    // end of the assistant turn
-{ "type": "error", "message": "Session not found" }
-```
-
-### Replacing it
-
-All three endpoints go away with the chat app
-([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*), along
-with the `sessions`/`messages` tables. A `GET /health` gets added in the same
-change so the service stays verifiable while it has no other routes.
-
-The routes that replace them — inventory, categories, and the per-user WebSocket
+The routes that fill the gap — categories, inventory, and the per-user WebSocket
 push channel — are specified in [`docs/PRD.md`](docs/PRD.md) §7 and sequenced in
-[`docs/ROADMAP.md`](docs/ROADMAP.md). The auth routes above are already there and
-are unaffected by the removal.
+[`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 Two conventions those routes will follow, worth knowing before you add one:
 
@@ -268,8 +250,8 @@ Docker to install. The only CLI you need is `gcloud`:
 gcloud run deploy salamander-server --source .
 ```
 
-**Long-lived WebSockets need non-default Cloud Run flags** — today's chat socket
-and the push channel that replaces it both:
+**Long-lived WebSockets will need non-default Cloud Run flags** — nothing opens
+a socket today, but the push channel will:
 
 ```bash
 gcloud run deploy salamander-server --source . \
@@ -279,20 +261,18 @@ gcloud run deploy salamander-server --source . \
 
 Session affinity is best-effort — a scale-down still cuts live sockets, and the
 frontend has no reconnect logic (see `docs/ARCHITECTURE.md` → *Known gaps*). That
-matters less once the push channel lands: because it is an optimization rather
-than the source of truth, a dropped socket will leave the UI stale until the next
-fetch rather than broken. On today's chat socket, a drop loses the response
+matters less for the push channel than it did for the chat socket: because the
+channel is an optimization rather than the source of truth, a dropped socket
+leaves the UI stale until the next fetch rather than losing a response
 mid-sentence.
 
 ---
 
 ## Troubleshooting
 
-**Chat UI loads but messages never send.** `VITE_WS_URL` is unset, so the socket
-points at the stale default LAN IP. Set it in `frontend/.env` and restart Vite.
-
-**Chat dies after a few minutes idling in a deployed environment.** Cloud Run's
-request timeout is capping the WebSocket. See [Deployment](#deployment).
+**Signed in, but the app looks empty.** That is the current state — the chat UI
+was removed and the inventory UI has not landed. `GET /health` and the `/auth/*`
+routes are the whole backend surface.
 
 **Backend exits with `DATABASE_URL is not set`.** You skipped
 `cp .env.example .env`, or you're running from the repo root instead of
@@ -305,10 +285,6 @@ request timeout is capping the WebSocket. See [Deployment](#deployment).
 uses peer auth with no password set — run the
 `ALTER USER postgres PASSWORD 'postgres';` line from step 1.
 
-**`401` from the Anthropic API.** `ANTHROPIC_API_KEY` is missing or still the
-placeholder from `.env.example`. REST calls keep working; only the streamed turn
-fails.
-
 **`npm install` warns `EBADENGINE ... required: node >=20`.** That's
 `drizzle-kit`, a dev-only dependency. The server itself runs on 18; you only need
 Node 20 to regenerate migrations.
@@ -320,7 +296,7 @@ Node 20 to regenerate migrations.
 ```
 project-salamander/
 ├── node-server/    backend — see src/{db,api,agent}/*_CONTEXT.md for design notes
-├── frontend/       React SPA (chat UI today; to be replaced)
+├── frontend/       React SPA (login + a placeholder signed-in shell)
 ├── py-server/      legacy Python backend, superseded by node-server
 └── docs/
     ├── ARCHITECTURE.md   architecture, data model, runtime flows, deployment

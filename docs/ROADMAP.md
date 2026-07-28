@@ -4,11 +4,11 @@ This is the phased delivery plan for building the inventory-aware shopping agent
 [`PRD.md`](PRD.md) on top of the existing backend foundation. The PRD is the authority on *what*
 and *why*; this file is the authority on *what ships in which phase, and when*.
 
-> **The chat app is to be removed — this has not happened yet.** Salamander is to have no
-> conversational surface: the LLM becomes an interpreter that turns free text into DTOs the server
-> commits (PRD §1). Nothing in this roadmap builds a chatbot, and the Phase 1 chat tables, routes,
-> and UI get deleted **before Phase 1a begins** — see `ARCHITECTURE.md` → *Removing the chat app*
-> for the checklist. Budget it as prerequisite work; it is not costed into any phase below.
+> **The chat app has been removed.** Salamander has no conversational surface: the LLM becomes an
+> interpreter that turns free text into DTOs the server commits (PRD §1). Nothing in this roadmap
+> builds a chatbot, and the Phase 1 chat tables, routes, agent and UI were deleted as prerequisite
+> work ahead of Phase 1b — see `ARCHITECTURE.md` → *Removing the chat app*. It was not costed into
+> any phase below and does not need to be.
 
 - Phases here are defined by the maintainer and may regroup or resequence the PRD's §10 build
   order. Where a phase diverges from a PRD decision, that divergence is called out explicitly.
@@ -40,9 +40,10 @@ _PRD §3 (incl. §3.7), build steps 1–2._
   hard-delete cascade).
 - **Schema impact:** `sessions` gained `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`;
   `POST /sessions`, history, and the WS handler became user-scoped with ownership checks. That was
-  the right shape for the chat app it landed on, but `sessions` and `messages` are still **dropped**
-  with the chat surface (PRD §3.5) — auth was built to outlive them, and the token-streaming WS
-  handler is replaced by the per-user push channel below.
+  the right shape for the chat app it landed on; `sessions` and `messages` have since been
+  **dropped** with the chat surface (PRD §3.5, `drizzle/0002_drop_chat.sql`) and auth came through
+  untouched, as designed. The token-streaming WS handler is gone; the per-user push channel below
+  replaces it.
 - **Frontend:** signup / login / logout screens with a "Continue with Google" button, auth guard,
   all API and WS calls credentialed (`credentials: 'include'`) with single-flight token refresh.
   **The account-settings screen (profile / password / delete) is still outstanding** — the routes
@@ -96,13 +97,15 @@ targets are later phases)._
   for the same reason budgets are: one bounded field, a small long-lived set, a taxonomy the user
   curates rather than dictates. The interpreter may still *propose* a new category when adding an
   item (§5.1.1) — creating one is cheap, visible, and undone with a rename.
-- **User-scoped WebSocket push channel.** The chat socket is deleted; in its place Phase 1 stands up
-  a per-user, server→client channel so an inventory write can push its delta to the open UI. The
+- **User-scoped WebSocket push channel.** The chat socket is deleted and the `@fastify/websocket`
+  registration kept; in its place Phase 1b stands up a per-user, server→client channel so an
+  inventory write can push its delta to the open UI. The
   channel is derived server-side from the auth session, so it is designed into the auth/WS layer up
   front rather than bolted on later. It is best-effort: REST stays the source of truth, and a
   dropped socket means stale, not broken.
-- **Chat removal is prerequisite work, not a phase item.** The `sessions`/`messages` tables, the
-  streaming handler, the chat agent, and the chat UI are deleted before Phase 1a begins.
+- **Chat removal was prerequisite work, not a phase item.** The `sessions`/`messages` tables, the
+  streaming handler, the chat agent, and the chat UI are gone; `GET /health` was added in the same
+  change so the service stays verifiable while the domain routes do not exist yet.
 
 ### Phase 1 timeline breakdown
 

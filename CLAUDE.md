@@ -25,11 +25,11 @@ Rules that follow from this — treat them as invariants:
 
 Commit policy (direct commit vs. confirm-before-commit) is decided **per module**, not globally — see `docs/PRD.md` §5.0. Settled so far: inventory → direct commit; mandates and grants → confirm-before-commit. Categories sidestep the question entirely — they are a form on their own management page, not an interpreted surface (§5.1.1), alongside account creation and budgets.
 
-**The chat app that shipped as Phase 1 has NOT been removed yet — it is still what runs.** `sessions` + `messages` tables, `POST /sessions`, `GET /sessions/{id}/history`, the token-streaming handler in `api/websocket.ts`, the chat generator in `agent/index.ts`, and the React chat UI are all still present. Removing them is prerequisite work ahead of roadmap Phase 1; `docs/ARCHITECTURE.md` → *Removing the chat app* has the checklist.
+**The Phase 1 chat app has been removed.** `sessions` + `messages` tables (dropped by `drizzle/0002_drop_chat.sql`), `POST /sessions`, `GET /sessions/{id}/history`, the token-streaming WebSocket handler, the chat generator in `agent/index.ts`, and the React chat UI are all gone. Do not reintroduce any of it: no conversation state, no streaming endpoint, no assistant persona.
 
-Until that lands, expect the code and these docs to disagree: the docs describe the interpreter architecture, the code is still the chat app. When they conflict, **the docs are the spec and the code is the thing to change** — do not "fix" the docs back toward the chat implementation, and do not extend the chat surface.
+**What runs today is auth and nothing else.** Google OAuth *and* email + password, JWT session cookies with CSRF, `users` / `oauth_accounts` / `auth_sessions` tables, auth enforced on every REST route (`node-server/src/auth/`, `docs/ARCHITECTURE.md` → *Authentication*), plus `GET /health`. The frontend is the login screen and a placeholder signed-in shell. The `@fastify/websocket` registration is kept with no route attached — the per-user push channel reuses it.
 
-**Accounts have landed, though — roadmap Phase 1a is real code.** Google OAuth *and* email + password, JWT session cookies with CSRF, `users` / `oauth_accounts` / `auth_sessions` tables, auth enforced on every REST route and at the WebSocket handshake (`node-server/src/auth/`, `docs/ARCHITECTURE.md` → *Authentication*). It currently sits under the chat app — every chat session is owned by a user — and carries over unchanged when that surface is removed, because the per-user push channel derives from the same session.
+Everything else in these docs is still specification, not code. The next work is roadmap Phase 1b: `categories`, then inventory, then the stock-update interpreter. When docs and code disagree, **the docs are the spec and the code is the thing to change**.
 
 ## Before Starting Any Work
 

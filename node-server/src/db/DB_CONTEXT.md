@@ -26,11 +26,11 @@ After editing `schema.ts`, run `npm run db:generate` and commit the generated SQ
 
 - **client.ts** — `pg.Pool` + Drizzle instance, and the `Db` / `DbExecutor` types. Everything else in this folder depends on it.
 
-- **schema.ts** — Drizzle table definitions and the inferred row types. It holds the auth tables (`users`, `oauth_accounts`, `auth_sessions`), which stay, plus `sessions` and `messages`, both of which are **to be dropped** with the chat app (`docs/ARCHITECTURE.md` → *Removing the chat app*) — that needs a hand-written drop migration, since `0000_init` has no `meta/*_snapshot.json` (the auth migration `0001` committed one, so `drizzle-kit generate` can diff from there forward). The remaining domain tables (`categories`, `inventory_items`, …) arrive with roadmap Phase 1b; the target model is `docs/PRD.md` §6.
+- **schema.ts** — Drizzle table definitions and the inferred row types. It holds the three auth tables (`users`, `oauth_accounts`, `auth_sessions`) and nothing else: `sessions` and `messages` went with the chat app, dropped by `drizzle/0002_drop_chat.sql`. The domain tables (`categories`, `inventory_items`, …) arrive with roadmap Phase 1b; the target model is `docs/PRD.md` §6.
 
 - **migrate.ts** — runs pending migrations. Called by `server.ts` at boot; also runnable standalone via `npm run db:migrate`.
 
-- **repositories/** — query logic, one module per table. `sessions.ts` and `messages.ts` go with the chat app; the auth repositories below stay, and the domain repositories join them.
+- **repositories/** — query logic, one module per table. The chat repositories (`sessions.ts`, `messages.ts`) are gone; the domain repositories join the auth ones below.
 
 - **repositories/users.ts** — query logic for `users`. Owns email normalisation (lowercasing) so a caller cannot forget and create a case-duplicate account.
 
@@ -38,7 +38,7 @@ After editing `schema.ts`, run `npm run db:generate` and commit the generated SQ
 
 - **repositories/authSessions.ts** — refresh-token records and revocation. `getByRefreshHash` deliberately returns revoked and expired rows so the refresh route can tell an unknown token from a replayed one.
 
-- **repositories/sessions.ts** — query logic for the `sessions` table. Every read is scoped by `user_id`; there is intentionally no unscoped lookup. Goes with the chat app; the `user_id`-scoping habit does not.
+The `user_id`-scoping habit the deleted chat repositories established stays: every read on a user-owned table takes the owner as an argument, and there is intentionally no unscoped lookup to reach for.
 
 ## Conventions for new tables
 

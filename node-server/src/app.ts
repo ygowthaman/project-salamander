@@ -4,8 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 
 import { authRoutes } from "./api/auth.js";
-import { sessionsRoutes } from "./api/sessions.js";
-import { websocketRoutes } from "./api/websocket.js";
+import { healthRoutes } from "./api/health.js";
 import { allowedOrigins, registerAuth } from "./auth/plugin.js";
 
 /**
@@ -40,10 +39,12 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   // Cookie parsing plus the global identify/CSRF hooks. Must precede the routes.
   await registerAuth(app);
 
+  // Kept with no route attached to it: the per-user push channel (roadmap
+  // Phase 1b) reuses this registration. Only the chat socket is gone.
   await app.register(websocket);
+
+  await app.register(healthRoutes);
   await app.register(authRoutes);
-  await app.register(sessionsRoutes);
-  await app.register(websocketRoutes);
 
   return app;
 }

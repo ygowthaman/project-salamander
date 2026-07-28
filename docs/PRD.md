@@ -2,8 +2,9 @@
 
 ## Status
 
-Draft / not started. **The chat-app removal this document assumes has not happened yet** — the code
-is still the Phase 1 chat app (see §3.5 and `ARCHITECTURE.md` → *Removing the chat app*). This document turns `docs/IDEAS.md` (the product vision) into an
+Draft. **The chat-app removal this document assumes has happened** (see §3.5 and
+`ARCHITECTURE.md` → *Removing the chat app*); auth is built; nothing else specified here is.
+This document turns `docs/IDEAS.md` (the product vision) into an
 implementable PRD, and adds the accounts, authentication, and session layer that the vision
 assumes but does not yet specify. It is self-contained so a fresh Claude Code session can pick up
 the work without re-reading the originating conversation.
@@ -105,9 +106,8 @@ of it:
 
 - **Session** — always an **auth session**: an authenticated browser session, represented by a
   signed JWT in an httpOnly cookie and backed by a server-side refresh-token record for revocation
-  (§3.3). This becomes the *only* meaning of "session" in the codebase once the Phase 1 **chat
-  session** (a `sessions` + `messages` conversation thread) is **removed** along with the chatbot —
-  see §3.5. Until then both meanings are live in the code, so keep qualifying which one you mean.
+  (§3.3). It is now the *only* meaning of "session" in the codebase: the Phase 1 **chat session**
+  (a `sessions` + `messages` conversation thread) was removed along with the chatbot — see §3.5.
 - **Interpretation** — a single-turn LLM call that converts free user text into a structured DTO,
   validated against a zod schema (§8.1). The app's primary use of the model.
 - **Direct commit** vs **confirm-before-commit** — the two commit patterns an interpreting endpoint
@@ -201,20 +201,21 @@ invalidates all outstanding access tokens — acceptable given the refresh flow.
 
 ### 3.5 Impact on existing Phase 1 code
 
-The chatbot is to be removed, so this is a subtraction before it is an addition. **None of it has
-happened yet** — this is the prerequisite work, not a description of the current tree:
+The chatbot was a subtraction before it was an addition. **This part is done** — it describes the
+current tree:
 
-- **`sessions` and `messages` get dropped** — both tables, their repositories, `POST /sessions`,
-  `GET /sessions/{id}/history`, and the token-streaming WebSocket handler. There is no chat session
-  to add a `user_id` to; the concept goes away rather than being migrated. A drop migration
-  handles existing dev
-  data.
-- **The agent layer is repurposed, not deleted** — `src/agent/` stops being a streaming chat
-  generator and becomes the home of the single-turn **interpretation** functions (§8.1). The
-  Anthropic client, the `ANTHROPIC_API_KEY` wiring, and the prompt-caching approach carry over.
-- **The WebSocket is repurposed too** — from a per-chat-session token stream to a **per-user data
-  push channel** (§8.4). Same `@fastify/websocket` plugin, entirely different payload: rows and
-  deltas, not tokens.
+- **`sessions` and `messages` were dropped** — both tables (`drizzle/0002_drop_chat.sql`), their
+  repositories, `POST /sessions`, `GET /sessions/{id}/history`, and the token-streaming WebSocket
+  handler. There was no chat session to add a `user_id` to; the concept went away rather than being
+  migrated.
+- **The agent layer was emptied, not repurposed in place** — the streaming chat generator was
+  deleted rather than refactored, and `src/agent/` now waits for the single-turn **interpretation**
+  functions (§8.1). The Anthropic dependency and the `ANTHROPIC_API_KEY` wiring stay for them.
+- **The WebSocket registration was kept without a route** — the plugin stands ready for the
+  **per-user data push channel** (§8.4), which carries rows and deltas rather than tokens. The
+  channel itself is not built.
+- **`GET /health` was added** in the same change, so liveness does not depend on an authenticated
+  route while the domain routes do not exist.
 - Frontend gains signup/login/logout screens and an auth guard; API/WS calls rely on the cookie
   being sent automatically (`credentials: 'include'` / cookie on WS upgrade). CORS must allow
   credentials for the specific frontend origin (wildcards are incompatible with credentialed
@@ -750,7 +751,7 @@ auth_sessions
   id, user_id → users(id), refresh_token_hash, user_agent, ip,
   expires_at, created_at, revoked_at
 
--- NOTE: the Phase 1 `sessions` and `messages` tables are to be DROPPED (§3.5). There is no chat
+-- NOTE: the Phase 1 `sessions` and `messages` tables were DROPPED (§3.5). There is no chat
 --   session and no conversation history to store; the LLM is stateless per call (§1).
 
 categories                     -- user-defined item taxonomy, curated from its own UI page (§5.1.1)
@@ -1190,8 +1191,8 @@ from server to client**, not tokens, and it is scoped **per user**, not per conv
 - **Partial-fulfillment / delivery-fee edge-case handling** beyond routing it to the LLM fallback.
 - **A conversational interface of any kind.** No chatbot, no assistant persona, no multi-turn
   dialogue, no streaming replies. The LLM is an interpreter behind the UI (§1) and nothing else.
-  Removing the Phase 1 chat app is deliberate and pending (§3.5) — the *capability* is not being
-  deferred to a later phase, it is being dropped.
+  Removing the Phase 1 chat app was deliberate and is done (§3.5) — the *capability* was not
+  deferred to a later phase, it was dropped.
 - **Bulk file import** (CSV/spreadsheet upload). Deferred. Note that *multi-item* natural language
   already works — one sentence can add or update several items at once (§5.1) — so the onboarding
   path is "type a few sentences", not "add one item at a time". Parsing an uploaded file is the
@@ -1221,9 +1222,10 @@ rewrite. Until then, the app never completes a purchase on the user's behalf.
 Extends the `IDEAS.md` build order with the auth layer sequenced first, since everything else
 depends on a user identity.
 
-1. **Auth foundation** — `users` + `auth_sessions` tables, signup/login/logout/me, JWT cookie,
-   Fastify auth plugin, WS handshake auth. **Drop the Phase 1 `sessions`/`messages` tables and chat
-   routes** (§3.5) and stand up the per-user WS push channel (§8.4) in their place.
+1. **Auth foundation** ✅ *built* — `users` + `auth_sessions` tables, signup/login/logout/me, JWT
+   cookie, Fastify auth plugin, WS handshake auth. The Phase 1 `sessions`/`messages` tables and chat
+   routes are **dropped** (§3.5); the per-user WS push channel (§8.4) that takes their place is
+   still outstanding.
    Include **account lifecycle** (§3.6): `PATCH /auth/me`, change-password, `DELETE /auth/me`, and
    **login throttling/lockout**.
 2. **Frontend auth** — signup/login/logout UI, auth guard, credentialed API/WS calls, plus an
@@ -1328,7 +1330,7 @@ Domain:
 - [ ] The item-definition interpreter returns **either** an existing `category_id` **or** a proposed
       `new_category` — never a bare string. A proposed new category is created in the same
       transaction as the item; an unresolved *item* name is still surfaced, never invented.
-- [ ] **There is no conversational surface anywhere in the app** — no chat route, no assistant
+- [x] **There is no conversational surface anywhere in the app** — no chat route, no assistant
       persona, no multi-turn state, no streamed prose. Every LLM call is single-turn and returns
       structured output that the server, not the model, turns into what the user sees.
 - [ ] `POST /inventory/search` answers *"do I own / am I low on X?"* from the asking user's own
@@ -1405,9 +1407,10 @@ Domain:
       built.)
 
 Migrations / compatibility:
-- [ ] New migrations **drop** the Phase 1 `sessions` and `messages` tables and add `users`,
-      `auth_sessions`, and the domain tables. No chat route, chat table, or streaming handler
-      survives anywhere in the codebase.
+- [x] Migrations **drop** the Phase 1 `sessions` and `messages` tables (`0002_drop_chat.sql`) and
+      add `users`, `oauth_accounts` and `auth_sessions` (`0001_auth_users_oauth.sql`). No chat
+      route, chat table, or streaming handler survives anywhere in the codebase.
+- [ ] Later migrations add the domain tables.
 
 ---
 
@@ -1503,8 +1506,8 @@ Migrations / compatibility:
 **Decisions now locked** (were open in earlier drafts; confirmed by the maintainer):
 
 - **No conversational surface.** The LLM is an interpreter only (§1). The Phase 1 chat app — chat
-  sessions, the `messages` table, token streaming — is to be removed, and the WebSocket becomes a
-  per-user data push channel (§8.4). Decision is locked; the work is pending (§3.5).
+  sessions, the `messages` table, token streaming — **has been removed** (§3.5), and the WebSocket
+  becomes a per-user data push channel (§8.4) when that channel is built.
 - **Commit policy is per module, not global.** Both patterns are first-class (§5.0); each module
   picks one as it is built and records the choice. Settled so far: inventory → **direct commit**
   (§5.1); mandates and grants → **confirm-before-commit** (§5.2–5.3), so their `/…/parse` routes are

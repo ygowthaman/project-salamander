@@ -1,7 +1,7 @@
 import { AuthProvider } from "./auth/AuthContext";
 import { useAuth } from "./auth/useAuth";
 import { LoginPage } from "./components/auth/LoginPage";
-import { ChatWindow } from "./components/chat/ChatWindow";
+import { HomePage } from "./components/home/HomePage";
 import "./App.css";
 
 function Gate() {
@@ -13,7 +13,7 @@ function Gate() {
     return <div className="app-loading">Loading…</div>;
   }
 
-  return status === "authenticated" ? <ChatWindow /> : <LoginPage />;
+  return status === "authenticated" ? <HomePage /> : <LoginPage />;
 }
 
 export default function App() {

@@ -1,7 +1,7 @@
 # API Context
 
 This folder contains the Fastify route handlers. Each file is a `FastifyPluginAsync` covering one
-domain, registered by `server.ts`.
+domain, registered by `app.ts`.
 
 ## Structure
 
@@ -9,22 +9,22 @@ Domain route files (auth, inventory, mandates, …) plus the WebSocket push chan
 owns its zod request/response schemas, since no other layer needs them — zod parses the input and
 shapes the output explicitly.
 
-- **auth.ts** — `/auth/*`: signup, login, Google OAuth redirect + callback, refresh, logout, and the account lifecycle routes. The reasoning behind the token, cookie and OAuth design lives in `../auth/AUTH_CONTEXT.md`. This one is already built, and is independent of the chat-app removal.
+- **auth.ts** — `/auth/*`: signup, login, Google OAuth redirect + callback, refresh, logout, and the account lifecycle routes. The reasoning behind the token, cookie and OAuth design lives in `../auth/AUTH_CONTEXT.md`.
 
-- **sessions.ts** — the chat REST routes (session creation, message history). To be deleted.
+- **health.ts** — `GET /health`. Unauthenticated and database-free on purpose: it reports that the process is serving, not that Postgres is reachable.
 
-> ⚠️ **This describes the target surface.** Today this folder contains `sessions.ts` (the chat REST
-> routes) and `websocket.ts` (the token-streaming chat socket). Both are **to be deleted** — see
-> `docs/ARCHITECTURE.md` → *Removing the chat app*. There is to be no chat route and no streaming
-> endpoint; the sections below describe what replaces them.
+> **Only those two exist today.** The chat routes (`sessions.ts`, and the token-streaming
+> `websocket.ts`) have been removed. There is no chat route and no streaming endpoint, and none is
+> coming back — the sections below describe the surface that replaces them, starting with
+> `categories.ts` and `inventory.ts` in roadmap Phase 1b.
 
 ## Authentication and ownership
 
 Every route here requires a signed-in user via the `requireAuth` preHandler. The owner of a new row comes from `request.user`, never from the request body — this is the `user_id` invariant, enforced at the one place that can enforce it.
 
-Reads are scoped by owner in the repository itself — there is no unscoped `getSession`, only `getSessionForUser` — so a route cannot accidentally return another user's row. A row that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists. Domain routes inherit both habits verbatim.
+Reads are scoped by owner in the repository itself — write no unscoped `getX`, only `getXForUser` — so a route cannot accidentally return another user's row. A row that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists. The deleted chat routes established both habits; domain routes inherit them verbatim.
 
-The WebSocket authenticates at the **handshake** (the cookie rides the upgrade request) and validates `Origin` there too, because CORS does not apply to WebSockets. Ownership is then re-checked on every message, not just at connect: the socket can outlive the 15-minute access token, and the account may be deleted mid-connection. The push channel keeps the handshake and the re-check; it just stops carrying messages in the other direction.
+The push channel authenticates at the **handshake** (the cookie rides the upgrade request) and must validate `Origin` there too, because CORS does not apply to WebSockets. Ownership is re-checked per push rather than trusted from connect time: a socket outlives the 15-minute access token, and the account may be deleted mid-connection.
 
 ## The interpret flow
 
@@ -81,8 +81,9 @@ works inside or outside a transaction — see `../db/DB_CONTEXT.md`.
 ## The WebSocket push channel
 
 One socket per authenticated user, running in the opposite direction from the chat socket it
-replaces. It reuses the `@fastify/websocket` plugin already registered in `server.ts` — only the
-route changes:
+replaces. **Not built yet** — it arrives with the first pushed row change. The
+`@fastify/websocket` plugin is deliberately still registered in `app.ts` with no route attached, so
+standing it up is a route file, not a dependency decision:
 
 - **Authenticate at the handshake** — the cookie rides along with the WS upgrade. Reject
   unauthenticated upgrades with a close code. Validate `Origin` too: a cross-site page must not be

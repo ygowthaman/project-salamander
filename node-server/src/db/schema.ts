@@ -81,45 +81,9 @@ export const authSessions = pgTable(
   }),
 );
 
-// Chat sessions. `user_id` is NOT NULL: every conversation belongs to exactly
-// one account, and the pre-auth anonymous rows are dropped by the migration
-// that adds this column (they have no owner to attribute them to).
-export const sessions = pgTable(
-  "sessions",
-  {
-    id: uuid("id").primaryKey().$defaultFn(randomUUID),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    title: text("title").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => ({
-    // Backs the "list my chat sessions, newest first" query.
-    userIdx: index("sessions_user_id_created_at_idx").on(t.userId, t.createdAt),
-  }),
-);
-
-export const messages = pgTable(
-  "messages",
-  {
-    id: uuid("id").primaryKey().$defaultFn(randomUUID),
-    sessionId: uuid("session_id")
-      .notNull()
-      .references(() => sessions.id, { onDelete: "cascade" }),
-    role: text("role").notNull(),
-    content: text("content").notNull(),
-    createdAt: createdAt(),
-  },
-  (t) => ({
-    // Declared here to match the index already created by 0000_init.sql — without
-    // it, `drizzle-kit generate` would emit a DROP for an index the app depends on.
-    sessionIdx: index("messages_session_id_created_at_idx").on(t.sessionId, t.createdAt),
-  }),
-);
+// The domain tables (categories, inventory_items, …) land here with roadmap
+// Phase 1b; the target model is docs/PRD.md §6.
 
 export type User = typeof users.$inferSelect;
 export type OauthAccount = typeof oauthAccounts.$inferSelect;
 export type AuthSession = typeof authSessions.$inferSelect;
-export type Session = typeof sessions.$inferSelect;
-export type Message = typeof messages.$inferSelect;
