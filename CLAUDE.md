@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Salamander is a shopping agent — a chat web app where users describe what they want to buy and Claude returns streaming shopping suggestions. This is Phase 1: establishing the core foundation of LLM connectivity, real-time streaming, and session persistence. No auth, no external search APIs, no payments in Phase 1.
+Salamander is a shopping agent — a chat web app where users describe what they want to buy and Claude returns streaming shopping suggestions. Phase 1 established the core foundation of LLM connectivity, real-time streaming, and session persistence. Authentication has since been added: Google OAuth **and** email + password, with every chat session owned by a user. No external search APIs and no payments yet.
 
 ## Before Starting Any Work
 
@@ -15,6 +15,7 @@ Current context files:
 - `node-server/src/db/DB_CONTEXT.md` — database, connectivity, migrations, and repository structure
 - `node-server/src/api/API_CONTEXT.md` — API layer, routing, and WebSocket design
 - `node-server/src/agent/AGENT_CONTEXT.md` — LLM layer, streaming, and prompt caching
+- `node-server/src/auth/AUTH_CONTEXT.md` — accounts, Google OAuth, cookies/CSRF, and why the cookie domain matters
 
 `README.md` covers how to run the server, the client, and the full stack locally.
 

@@ -132,10 +132,19 @@ printf '%s' "sk-ant-REPLACE_ME" | \
 printf 'postgresql://postgres:%s@%s:5432/shopping' "$PG_PASSWORD" "$VM_IP" | \
   gcloud secrets create database-url --data-file=-
 
-# Let Cloud Run's runtime service account read both secrets.
+# JWT signing secret (auth). Must be >= 32 chars; rotating it invalidates all
+# outstanding access tokens, which the refresh flow recovers from.
+openssl rand -base64 32 | tr -d '\n' | \
+  gcloud secrets create jwt-secret --data-file=-
+
+# Google OAuth client secret — see §9 for creating the client itself.
+printf '%s' "GOCSPX-REPLACE_ME" | \
+  gcloud secrets create google-client-secret --data-file=-
+
+# Let Cloud Run's runtime service account read the secrets.
 export PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 export RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-for s in anthropic-api-key database-url; do
+for s in anthropic-api-key database-url jwt-secret google-client-secret; do
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:${RUNTIME_SA}" \
     --role=roles/secretmanager.secretAccessor
@@ -156,12 +165,20 @@ gcloud run deploy salamander-server \
   --network=salamander-vpc \
   --subnet=salamander-subnet \
   --vpc-egress=private-ranges-only \
-  --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest \
-  --set-env-vars="^##^ALLOWED_ORIGINS=https://${PROJECT_ID}.web.app,https://${PROJECT_ID}.firebaseapp.com" \
+  --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest \
+  --set-env-vars="^##^ALLOWED_ORIGINS=https://salamander.axoliz.ai##PUBLIC_API_URL=https://api.axoliz.ai##FRONTEND_URL=https://salamander.axoliz.ai##COOKIE_DOMAIN=axoliz.ai##GOOGLE_CLIENT_ID=REPLACE.apps.googleusercontent.com" \
   --session-affinity \
   --timeout=3600 \
   --min-instances=1
 ```
+
+> **`COOKIE_DOMAIN=axoliz.ai` is what makes authentication work at all.** Auth
+> cookies are `SameSite=Lax`, so the browser omits them on *cross-site* requests.
+> Because `run.app` is on the Public Suffix List, the `run.app` URL and
+> `salamander.axoliz.ai` are different sites — every authenticated call would
+> arrive cookie-less and 401 while working fine on localhost. §8 maps the service
+> to `api.axoliz.ai` so both sides sit under `axoliz.ai`; set `PUBLIC_API_URL`
+> and `FRONTEND_URL` to the mapped hostnames, not the `run.app` one.
 
 > **`^##^` is not optional.** `ALLOWED_ORIGINS` contains a comma, and gcloud uses
 > commas to separate *different* env vars — so an unescaped value fails with
@@ -300,6 +317,71 @@ Click **Verify**/**Finish** in Firebase. Then two waits:
 
 Because 7a already allowed the origin, chat and the WebSocket work the instant the
 cert is live.
+
+## 8. Backend custom domain (`api.axoliz.ai`) — required for authentication
+
+Until auth landed, the frontend could call the backend on its `run.app` URL.
+**It can no longer.** Auth cookies are `SameSite=Lax`, and `run.app` is on the
+Public Suffix List, so `salamander-server-….run.app` and `salamander.axoliz.ai`
+are *different sites*: the browser refuses to attach the cookie to any
+cross-site fetch. Everything works on localhost (same site) and then 401s in
+production. Putting the API on `api.axoliz.ai` puts both under `axoliz.ai`.
+
+```bash
+gcloud beta run domain-mappings create \
+  --service=salamander-server \
+  --domain=api.axoliz.ai \
+  --region="$REGION"
+```
+
+The command prints the DNS record to create — normally a `CNAME` to
+`ghs.googlehosted.com.`. Add it in Cloudflare exactly as for the frontend:
+
+| Type | Name | Target | Proxy |
+|---|---|---|---|
+| CNAME | `api` | `ghs.googlehosted.com` | **DNS only (grey cloud)** |
+
+Grey cloud again — Google mints the certificate via a challenge that must reach
+it directly. Expect the same "provisioning certificate" wait as §7d.
+
+> **If `domain-mappings` is unavailable in your region**, the supported
+> alternative is a global external Application Load Balancer with a serverless
+> NEG pointing at the service. **Do not** reach for the Firebase Hosting →
+> Cloud Run rewrite as a shortcut: it would make the API same-origin, but
+> **Firebase Hosting does not proxy WebSockets**, so chat would break entirely.
+
+Then rebuild the frontend against the new hostname (the URLs are baked in at
+build time) and redeploy it:
+
+```bash
+cd frontend
+cat > .env.production <<'EOF'
+VITE_API_URL=https://api.axoliz.ai
+VITE_WS_URL=wss://api.axoliz.ai
+EOF
+npm run build
+firebase deploy --only hosting --project "$PROJECT_ID"
+```
+
+## 9. Google OAuth client
+
+In the Cloud console → **APIs & Services**:
+
+1. **OAuth consent screen** — User type **External**. While the app is
+   unpublished, only accounts listed under **Test users** can sign in, so add
+   your own. Scopes needed are just `openid`, `email`, `profile`.
+2. **Credentials → Create credentials → OAuth client ID → Web application.**
+   - **Authorised JavaScript origins:** `https://salamander.axoliz.ai`
+   - **Authorised redirect URIs:**
+     - `https://api.axoliz.ai/auth/google/callback`
+     - `http://localhost:8000/auth/google/callback` (local dev)
+
+The redirect URI must match `${PUBLIC_API_URL}/auth/google/callback`
+**character for character**, or Google rejects the request with
+`redirect_uri_mismatch` before the user ever sees a consent screen.
+
+Put the client ID in `GOOGLE_CLIENT_ID` (a plain env var — it is public) and the
+secret in the `google-client-secret` Secret Manager entry from §4.
 
 ---
 

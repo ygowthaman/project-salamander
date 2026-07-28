@@ -57,7 +57,7 @@ three things on top of that foundation:
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Authentication | **Self-hosted email + password, JWT session cookie** | Full control, no third-party dependency, credentials live in the Postgres we already run. Cost of ownership (reset/verification) accepted. |
+| Authentication | ~~Self-hosted email + password only~~ → **email + password *and* Google OAuth**, JWT session cookie | **Superseded during implementation** (see §3.7). Password auth still exists exactly as specified; Google sign-in was added alongside it so users are not forced to create another password. The JWT-cookie session model is unchanged. |
 | Multi-user model | **Single user per account** | Each account owns its own inventory/mandates/orders. Household sharing is explicitly deferred (see Non-goals + Future phases). |
 | Input model | **Natural-language-first: free-text → LLM parse → confirm-before-commit** for inventory stock updates, inventory item definitions, mandates, and grants. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `current_stock`); the parsed draft is shown for approval/edit before persisting. |
 | Stored trigger form | **Structured `{op, field, value}`** | The scheduler must evaluate triggers deterministically; the free text is only the LLM's input, never what runs. |
@@ -103,8 +103,9 @@ session**; everywhere else it means a **chat session**.
 |---|---|
 | `id` | UUID, app-generated (`crypto.randomUUID`), consistent with existing tables. |
 | `email` | Unique, case-insensitive (store lowercased), validated with zod. Login identifier. |
-| `password_hash` | `argon2id` (preferred) or `bcrypt`. **Never** store or log the plaintext. |
+| `password_hash` | `argon2id`. **Never** store or log the plaintext. **Nullable** — null for Google-only accounts (§3.7). |
 | `display_name` | Optional, shown in UI and available to the LLM for tone. |
+| `avatar_url` | Optional; populated from the Google profile picture when available. |
 | `email_verified` | Boolean; gate autonomous ordering behind a verified email. |
 | `created_at`, `updated_at` | Timestamps. |
 
@@ -195,6 +196,42 @@ Table-stakes account management for a shippable app (data export is explicitly *
   exponential backoff or a temporary lockout after N failures). Without this the no-enumeration
   decision (§3.3) is undercut by unthrottled brute force. Applies to `/auth/signup` too (abuse) and,
   lightly, to the LLM-backed routes (cost — see §8.3).
+
+### 3.7 Google OAuth (implemented — supersedes the password-only decision)
+
+Google sign-in ships **alongside** email + password rather than replacing it. Everything in
+§3.2–§3.6 still holds; this section records what changed.
+
+- **`users.password_hash` is nullable.** An account created through Google has no password. Login
+  must treat null as "this account has no password credential" and still return the same 401 —
+  and, because argon2 takes ~50 ms, still burn the same time, or the response latency leaks which
+  accounts are OAuth-only.
+- **New `oauth_accounts` table** (§6) — one row per linked provider identity, keyed
+  `UNIQUE (provider, provider_account_id)` on Google's stable `sub` claim. **Never keyed on email:**
+  a Google account's email can change, and matching on it would re-point the link at whoever holds
+  that address next.
+- **Account linking rule.** When a Google identity's email matches an existing account, the two are
+  linked **only if Google asserts `email_verified`**. Otherwise anyone able to create a Google
+  account claiming that address could take over the matching Salamander account. An unverified match
+  is refused, not silently linked.
+- **ID-token validation** checks signature (against Google's JWKS), issuer, **and audience**. The
+  audience check is load-bearing: without it an ID token minted for a different OAuth client would
+  be accepted.
+- **PKCE + `state`.** The authorization-code flow uses S256 PKCE, with `state` and the code verifier
+  held in one signed, httpOnly cookie for the duration of the redirect. This is what stands in for
+  CSRF protection on the callback, which is a GET driven by Google and cannot carry a CSRF header.
+- **`POST /auth/change-password` doubles as "set a password."** For a Google-only account there is no
+  current password to prove; the authenticated cookie is the proof, so an OAuth user can add a
+  password and gain a second way in.
+- **`DELETE /auth/me` cannot always require a password.** Google-only accounts confirm with a typed
+  `"DELETE"` string instead.
+- **Google credentials are optional configuration.** Without `GOOGLE_CLIENT_ID` /
+  `GOOGLE_CLIENT_SECRET` the server still boots and password auth works; `/auth/google` returns 503.
+  Local dev and CI therefore need no OAuth client.
+
+**Deployment consequence.** `SameSite=Lax` cookies are not sent cross-site, so the API must share a
+registrable domain with the frontend — the backend is served from `api.axoliz.ai`, not its `run.app`
+URL. See `ARCHITECTURE.md` → Deployment.
 
 ---
 
@@ -555,8 +592,15 @@ for the common list queries.
 
 ```sql
 users
-  id, email (unique, lowercased), password_hash, display_name,
+  id, email (unique, lowercased), password_hash (NULLABLE — null for
+  Google-only accounts), display_name, avatar_url,
   email_verified, created_at, updated_at
+
+oauth_accounts                 -- linked provider identities (§3.7)
+  id, user_id → users(id) ON DELETE CASCADE,
+  provider ('google'), provider_account_id (Google's stable `sub`),
+  created_at
+  -- UNIQUE (provider, provider_account_id); never keyed on email
 
 auth_sessions
   id, user_id → users(id), refresh_token_hash, user_agent, ip,
@@ -660,12 +704,14 @@ can be queried and validated per-field. The genuinely open-ended parts (`fallbac
 All routes below `/auth/signup` and `/auth/login` require authentication.
 
 ```
-# Auth & account lifecycle (§3.3, §3.6)
+# Auth & account lifecycle (§3.3, §3.6, §3.7)
 POST   /auth/signup            { email, password, display_name? } → user + Set-Cookie
 POST   /auth/login             { email, password }                → user + Set-Cookie  (throttled)
+GET    /auth/google                                               → 302 to Google (PKCE + state)
+GET    /auth/google/callback   ?code&state                        → links/creates user, 302 to app
 POST   /auth/logout                                               → clears cookie
-POST   /auth/refresh                                              → rotates access token
-GET    /auth/me                                                   → current user
+POST   /auth/refresh                                              → rotates access + refresh token
+GET    /auth/me                                                   → current user (+ has_password, linked_providers)
 PATCH  /auth/me               { display_name?, email? }           → update profile (email → re-verify)
 POST   /auth/change-password  { current_password, new_password }  → revokes other sessions
 DELETE /auth/me               { password }                        → hard-delete account (cascades)
@@ -877,8 +923,8 @@ real misses.
   places the order manually** (§5.9). The app calling a provider's checkout API to buy on the user's
   behalf is a **stretch goal (§9.1)**, not near-term.
 - **Household / shared accounts.** Single user per account only; no membership, roles, or invites.
-- **Third-party / social login (OAuth), MFA, magic links.** Email + password only. The
-  `auth_sessions` design leaves room to add these later.
+- ~~**Third-party / social login (OAuth)**~~ — **no longer a non-goal; Google sign-in is
+  implemented** (§3.7). **MFA and magic links remain out of scope.**
 - **Complex mandate conditions** (multi-item combinations, expiry dates, seasonal rules) beyond
   simple threshold triggers in the first cut.
 - **Partial-fulfillment / delivery-fee edge-case handling** beyond routing it to the LLM fallback.
@@ -968,7 +1014,21 @@ cap, budget enforcement, idempotency). Not part of the near-term scope.
 ## 11. Acceptance Criteria
 
 Auth / accounts:
+
+> **Status:** implemented (including §3.7 Google OAuth). The guard-layer criteria below are covered
+> by `node-server/npm test`; the criteria that require a database round-trip — signup, login,
+> refresh rotation, the OAuth callback — are implemented but **not yet verified against a live
+> Postgres**, and the migration has not been applied anywhere.
+
 - [ ] A user can sign up, log in, refresh, and log out; `GET /auth/me` reflects state.
+- [ ] A user can sign in with Google; a returning Google user resolves to the same account via
+      `oauth_accounts.provider_account_id`, not by email.
+- [ ] A Google identity whose **verified** email matches an existing password account links to it;
+      an **unverified** match is refused rather than linked (account-takeover guard).
+- [ ] A Google ID token is rejected unless its signature, issuer **and audience** all check out.
+- [ ] A Google-only account can set a password via `POST /auth/change-password` without supplying a
+      current one, and can delete itself with a typed confirmation instead of a password.
+- [ ] Replaying an already-rotated refresh token revokes every session for that user.
 - [ ] Passwords are stored only as argon2id/bcrypt hashes; plaintext never logged.
 - [ ] Login returns an identical 401 for unknown-email and wrong-password (no enumeration).
 - [ ] Access token is an httpOnly + Secure + SameSite cookie; refresh tokens are revocable via
@@ -1059,12 +1119,13 @@ Migrations / compatibility:
 
 ## 12. Open Decisions (confirm at implementation start)
 
-1. **Password hashing**: argon2id (recommended) vs bcrypt — pick one library and cost factor.
-2. **Access-token transport**: httpOnly cookie (recommended, assumed above) vs `Authorization`
-   bearer header. Cookie chosen here for XSS resistance + automatic WS-upgrade delivery; revisit
-   if a mobile client without cookie support appears.
-3. **Refresh strategy**: server-side `auth_sessions` (recommended, enables revocation) vs
-   stateless refresh JWTs (simpler, no revocation).
+1. ~~**Password hashing**~~ — **resolved:** argon2id via `@node-rs/argon2` (prebuilt binaries, so no
+   node-gyp toolchain), library defaults m=19456, t=2, p=1.
+2. ~~**Access-token transport**~~ — **resolved:** httpOnly cookie, for XSS resistance and automatic
+   WS-upgrade delivery. Consequence: the API must share a registrable domain with the frontend
+   (`api.axoliz.ai`). Revisit if a mobile client without cookie support appears.
+3. ~~**Refresh strategy**~~ — **resolved:** server-side `auth_sessions`, with rotation on every
+   refresh and family-wide revocation on replay.
 4. **Reorder-window engine substrate** (§8): in-process `node-cron` sweep for opening windows +
    firing reminders (fastest to build) vs Cloud Scheduler + a job endpoint / per-window delayed
    Cloud Task for the reminder (scales, survives instance churn). Start in-process, plan the
@@ -1073,7 +1134,9 @@ Migrations / compatibility:
    search/pricing (checkout is not needed in scope) — or stay on the mock until one is chosen.
 6. **Email verification & password reset transport**: which mail provider, and whether verification
    gates signup or only the autonomous stretch goal (assumed: it's not required for the assisted
-   flow, since the user checks out themselves).
+   flow, since the user checks out themselves). **Still open and now more pressing:** Google
+   sign-in sets `email_verified` for free, but a password-only account currently has no way to
+   verify an address or reset a forgotten password.
 7. **Extraction model**: which Claude model does the NL→JSON parsing, and whether it's the same
    model as the chat assistant. A smaller/faster model may suffice for structured extraction.
 8. **Budget period reset**: calendar-month (resets on the 1st) vs rolling 30-day vs configurable

@@ -1,11 +1,6 @@
 import "dotenv/config";
 
-import Fastify from "fastify";
-import cors from "@fastify/cors";
-import websocket from "@fastify/websocket";
-
-import { sessionsRoutes } from "./api/sessions.js";
-import { websocketRoutes } from "./api/websocket.js";
+import { buildApp } from "./app.js";
 import { pool } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 
@@ -13,19 +8,8 @@ import { runMigrations } from "./db/migrate.js";
 // the container sets PORT=8080.
 const PORT = Number(process.env.PORT ?? 8000);
 const HOST = process.env.HOST ?? "0.0.0.0";
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ?? "http://localhost:5173";
 
-const app = Fastify({ logger: true });
-
-await app.register(cors, {
-  origin: ALLOWED_ORIGINS.split(",").map((o) => o.trim()),
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-});
-
-await app.register(websocket);
-await app.register(sessionsRoutes);
-await app.register(websocketRoutes);
+const app = await buildApp();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
