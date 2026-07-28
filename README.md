@@ -8,7 +8,7 @@ needs structured data, you type a plain sentence and the model turns it into the
 record the server stores.
 
 ```
-"Add 1984 to my Books"  →  { category: "Books", name: "1984", … }  →  saved  →  pushed to the UI
+"Add 1984 to my Books"  →  { name: "1984", category_id: "…", … }  →  saved  →  pushed to the UI
 ```
 
 Every model call is single-turn, non-streaming, and returns structured output —

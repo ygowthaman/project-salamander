@@ -350,8 +350,10 @@ the stored unit; the same normalization applies to a mandate's purchase quantity
 eggs"* → `12`) so stock counts and reorder quantities stay in the same unit.
 
 **Item definitions.** New items can be introduced in the same textarea (*"start tracking eggs, a
-dozen is normal"*); the LLM infers `category`, `unit`, a sensible `par_level`, and a **`restock_level`
-(the "full" quantity)**, which the confirm step exposes for the user to accept or edit. `restock_level`
+dozen is normal"*); the LLM infers `unit`, a sensible `par_level`, and a **`restock_level`
+(the "full" quantity)**, and resolves the category to an existing `category_id` or a proposed
+`new_category` (§5.1.1). The row is written straight through (direct commit, below) and every
+inferred field stays editable in the inventory table afterwards. `restock_level`
 is what an item's stock is set to when a reorder for it is placed (§5.9) — e.g. eggs → `12`, bread →
 `1`. (A plain form is a fine alternative for precise first-time setup, but is not the expected path.)
 
@@ -1394,11 +1396,12 @@ Migrations / compatibility:
 14. **Qualitative→quantitative anchor for stock**: what "low"/"plenty" map to — relative to the
     item's **mandate trigger threshold** (recommended, so "low" reliably fires the reorder) vs its
     `par_level` vs a fixed fraction. And behavior for an item with **no mandate/par** yet (assumed:
-    "low"/"out" still set a small/zero count, "plenty" a nominal restock, all shown in the confirm
-    diff for correction).
+    "low"/"out" still set a small/zero count, "plenty" a nominal restock, all written directly
+    (§5.1) and left editable in the table for correction).
 15. **New-item field inference**: when a stock sentence names an untracked item, how much to infer
-    (unit, category, par_level) vs ask. Assumed: infer sensible defaults and expose them as editable
-    fields in the confirm step rather than blocking.
+    (unit, category, par_level) vs ask. Assumed: infer sensible defaults — the category resolved to
+    a `category_id` or proposed as a `new_category` (§5.1.1) — and leave them editable on the
+    committed row rather than blocking.
 16. **Re-run item removal**: a mid-window re-run **appends** newly-passing items (assumed). Should a
     re-run also **remove** a line if the user restocked that item during the window (stock back above
     trigger)? Assumed no — removal stays a manual cart edit — but auto-removing avoids buying
