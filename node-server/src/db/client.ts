@@ -1,6 +1,6 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "./schema.js";
+import * as schema from "./schema/index.js";
 
 const url = process.env.DATABASE_URL;
 if (!url) {

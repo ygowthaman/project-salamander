@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import { createdAt } from "./common.js";
 
-const createdAt = () =>
-  timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .default(sql`now()`);
+// The auth tables. This is the root of the schema's dependency graph: every
+// user-owned table in the other modules points here, and this module imports
+// none of them.
 
 // UUIDs are app-generated (crypto.randomUUID), matching the previous Python
 // implementation's `default=uuid.uuid4` rather than a DB-side gen_random_uuid().
@@ -29,9 +29,7 @@ export const users = pgTable(
       .notNull()
       .default(sql`now()`),
   },
-  (t) => ({
-    emailUnique: uniqueIndex("users_email_unique").on(t.email),
-  }),
+  (t) => [uniqueIndex("users_email_unique").on(t.email)],
 );
 
 // One row per (provider, external account). Keyed on the provider's stable
@@ -48,13 +46,10 @@ export const oauthAccounts = pgTable(
     providerAccountId: text("provider_account_id").notNull(),
     createdAt: createdAt(),
   },
-  (t) => ({
-    providerAccountUnique: uniqueIndex("oauth_accounts_provider_account_unique").on(
-      t.provider,
-      t.providerAccountId,
-    ),
-    userIdx: index("oauth_accounts_user_id_idx").on(t.userId),
-  }),
+  (t) => [
+    uniqueIndex("oauth_accounts_provider_account_unique").on(t.provider, t.providerAccountId),
+    index("oauth_accounts_user_id_idx").on(t.userId),
+  ],
 );
 
 // Refresh-token store. Holds only a SHA-256 of the token so a database leak
@@ -74,15 +69,12 @@ export const authSessions = pgTable(
     createdAt: createdAt(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
-  (t) => ({
+  (t) => [
     // Unique because the hash is the lookup key on every refresh.
-    tokenHashUnique: uniqueIndex("auth_sessions_refresh_token_hash_unique").on(t.refreshTokenHash),
-    userIdx: index("auth_sessions_user_id_idx").on(t.userId),
-  }),
+    uniqueIndex("auth_sessions_refresh_token_hash_unique").on(t.refreshTokenHash),
+    index("auth_sessions_user_id_idx").on(t.userId),
+  ],
 );
-
-// The domain tables (categories, inventory_items, …) land here with roadmap
-// Phase 1b; the target model is docs/PRD.md §6.
 
 export type User = typeof users.$inferSelect;
 export type OauthAccount = typeof oauthAccounts.$inferSelect;

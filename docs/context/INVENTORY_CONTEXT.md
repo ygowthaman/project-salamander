@@ -97,7 +97,7 @@ inventory_items                -- EVERY tracked thing, in its complete form. No 
   id, user_id → users(id) ON DELETE CASCADE, name,
   category_id → categories(id) ON DELETE RESTRICT,     -- NOT NULL
   unit (nullable),                                     -- free text, deliberately
-  current_stock (nullable),      -- "how many do I have" — universal; a book collection counts copies
+  quantity (nullable),      -- "how many do I have" — universal; a book collection counts copies
   attributes (jsonb, nullable),  -- freeform: author/edition/isbn, model number — feeds NL search
   created_at, last_updated
 
@@ -146,7 +146,7 @@ Notes that are easy to get wrong:
   in before its rule was written, and a null `grant_id` is a rule with no stated constraint
   (PRD §5.2). If a column ever appears that is *inapplicable* for some rows, that is the signal to
   split again.
-- **`current_stock` stays on the item.** It is universal — you can own 1 copy of a book — and NL
+- **`quantity` stays on the item.** It is universal — you can own 1 copy of a book — and NL
   search filters on it (*"am I low on…"*, PRD §5.8). Stock updates must therefore work on items with
   no `mandates` row at all.
 - **`mandates` is the reorder hub, not inventory.** Grants, budgets, windows and runs connect *there*;
@@ -192,7 +192,7 @@ Identical to `API_CONTEXT.md` → *The interpret flow*; inventory is the module 
 
 ```
 1. Parse the body with zod                { text: "low on eggs, out of bread" }
-2. Assemble context from the DB           item names + ids; per named item current_stock + unit,
+2. Assemble context from the DB           item names + ids; per named item quantity + unit,
                                           plus par_level (and later trigger_condition) LEFT JOINed
                                           from mandates — absent for track-only items;
                                           categories as {id, name} pairs
@@ -207,7 +207,7 @@ Two interpretation **targets** live behind `/inventory/interpret` (PRD §8.1):
 
 | Target | Input example | Output |
 |---|---|---|
-| Stock update | *"low on eggs and milk, out of bread"* | per-item `current_stock` changes, threshold-aware |
+| Stock update | *"low on eggs and milk, out of bread"* | per-item `quantity` changes, threshold-aware |
 | Item definition | *"Add 1984 to my Books"*, *"start tracking eggs, a dozen is normal"* | new `inventory_items` rows, category resolved to `category_id` **or** proposed `new_category` |
 
 Threshold-aware mapping (PRD §5.1) — the crux of the stock-update target:
@@ -375,7 +375,7 @@ _ROADMAP 1c; PRD §8.1_
 _PRD §5.1, §5.1.1_
 
 - [ ] Second agent function/target: text → new `inventory_items`, inferring `unit` and
-      `current_stock`
+      `quantity`
 - [ ] Category resolution returning `category_id` **xor** `new_category` (enforce the xor in zod)
 - [ ] *"start tracking eggs, a dozen is normal"* also infers `par_level` / `restock_level` and creates
       the `mandates` row **in the same transaction** as the item (Chunk 2b ships the table, so this
@@ -428,7 +428,7 @@ it is made, with the reason, and mirror it into the PRD if it settles a §12 ent
 | §12.20 | Search matching depth (`ILIKE` → `pg_trgm` → full-text) | `ILIKE` over name + `attributes` | Open — Phase 2, but `attributes` shape now constrains it |
 | §12.23 | `restock_level` fallback when unset | `par_level`, else the ordered quantity | Open — matters in Phase 3. Cheaper now: both columns sit on the same row, so the fallback is local rather than a cross-table lookup |
 | new | One `/inventory/interpret` route for both targets, or a route per target? | Single route; the interpreter classifies. PRD §7 lists one route. | Open — decide at Chunk 6 |
-| new | Numeric type for `current_stock` / `par_level` / `restock_level` | `numeric` — *"half a bag of rice"* is a stated fractional case (§5.1) | Open — decide at Chunk 2; note `numeric` comes back as a string in `pg` |
+| new | Numeric type for `quantity` / `par_level` / `restock_level` | `numeric` — *"half a bag of rice"* is a stated fractional case (§5.1) | Open — decide at Chunk 2; note `numeric` comes back as a string in `pg` |
 | ~~new (D1)~~ | ~~Table name for the reorder policy table~~ | — | **Moot (D4):** there is no separate table; it is `mandates` |
 | ~~new (D1)~~ | ~~Does `mandates` key on `reorder_config_id` or `inventory_item_id`?~~ | — | **Moot (D4):** one merged table keyed on `inventory_item_id`, `UNIQUE` |
 | new (D1) | Does anything in the inventory UI need to *show* reorder state? | Yes, read-only — a badge/toggle — fetched from the reorder routes, never by inventory reading `mandates` itself | Open — decide at Chunk 4 / 2b |
@@ -511,7 +511,7 @@ table where two columns are "not applicable" for one of them. That has three cos
 adding two nullable columns plus a copy-across. The reverse direction — the one we avoided — is the
 expensive one, since splitting after items exist means backfilling and rewriting every reader.
 
-**Consequences already recorded.** `current_stock` stays on the item (universal, and search filters on
+**Consequences already recorded.** `quantity` stays on the item (universal, and search filters on
 it). The stock interpreter permanently needs an unanchored band for items with no config (§12.14, D3).
 `restock_level`'s §12.23 fallback is now same-row. Whether `mandates` re-keys onto `reorder_config_id`
 is the reorder module's call (§5).

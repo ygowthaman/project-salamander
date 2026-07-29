@@ -1,6 +1,6 @@
 import { and, eq, isNull, ne } from "drizzle-orm";
 import type { DbExecutor } from "../client.js";
-import { authSessions, type AuthSession } from "../schema.js";
+import { authSessions, type AuthSession } from "../schema/index.js";
 
 export async function createAuthSession(
   db: DbExecutor,

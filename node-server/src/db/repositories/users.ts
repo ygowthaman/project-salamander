@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { DbExecutor } from "../client.js";
-import { users, type User } from "../schema.js";
+import { users, type User } from "../schema/index.js";
 
 /**
  * Emails are stored lowercased and matched by a plain unique index, so every

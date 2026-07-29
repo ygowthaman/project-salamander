@@ -5,22 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1753185600000,
+      "when": 1785350732802,
       "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1784934764158,
-      "tag": "0001_auth_users_oauth",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1785259556338,
-      "tag": "0002_drop_chat",
       "breakpoints": true
     }
   ]
