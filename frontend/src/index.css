@@ -1,14 +1,48 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+/* Mantine's styles.css carries the reset and every component's styling, so this
+   file only needs what a full-height AppShell depends on. */
+html,
+body,
+#root {
+  height: 100%;
 }
 
-body {
-  font-family: Inter, system-ui, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+/* Watermark. One fixed layer on the body rather than a per-page element, so
+   every signed-in view gets it without having to opt in. Fixed, not scrolling,
+   so a long inventory list slides over a stationary mark.
+
+   Scoped by `:has()` to the marker HomePage puts on its AppShell, which keeps
+   the login screen (and the auth spinner) clear while leaving the whole rule in
+   one place — the alternative, a layer inside HomePage, would need AppShell.Main
+   lifted out of the watermark's way as well. */
+body:has([data-app-surface="shell"])::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  /* Never swallow a click meant for the form or the header behind it. */
+  pointer-events: none;
+  /* background-image: url("./assets/logo.svg"); */
+  background-repeat: no-repeat;
+  background-position: center;
+  /* The mark is square, so vmin fills 90% of the shorter viewport edge and it
+     stays fully visible whichever way the window is shaped. Deliberately
+     uncapped — it is meant to scale with the screen. */
+  background-size: 90vmin;
+  /* The app is locked to dark, so this is the value that matters. Kept low
+     because at this size the mark sits under most of the content. */
+  opacity: 0.045;
+}
+
+[data-mantine-color-scheme="light"] body:has([data-app-surface="shell"])::before {
+  /* The mark's mid greens contrast harder against white than against near-black,
+     so light needs a fainter setting to read as equally subtle. */
+  opacity: 0.03;
+}
+
+/* The watermark is positioned, so it would paint over the AppShell's static
+   content without this. Portalled overlays (menus, modals) mount outside #root
+   at their own higher z-index and are unaffected. */
+#root {
+  position: relative;
+  z-index: 1;
 }

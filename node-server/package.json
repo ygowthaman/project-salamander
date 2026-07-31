@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx test/auth-guards.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts --reset",
+    "db:migrate:preserve": "tsx src/db/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
@@ -23,7 +24,7 @@
     "@fastify/websocket": "^8.3.1",
     "@node-rs/argon2": "^2.0.2",
     "dotenv": "^16.4.5",
-    "drizzle-orm": "^0.36.4",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^4.28.1",
     "jose": "^5.10.0",
     "pg": "^8.13.1",
@@ -32,7 +33,7 @@
   "devDependencies": {
     "@types/node": "^20.16.0",
     "@types/pg": "^8.11.10",
-    "drizzle-kit": "^0.28.1",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

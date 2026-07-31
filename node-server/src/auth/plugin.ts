@@ -2,7 +2,7 @@ import cookie from "@fastify/cookie";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../db/client.js";
 import * as usersRepo from "../db/repositories/users.js";
-import type { User } from "../db/schema.js";
+import type { User } from "../db/schema/index.js";
 import { authConfig } from "./config.js";
 import { ACCESS_COOKIE, CSRF_COOKIE, setCsrfCookie } from "./cookies.js";
 import { randomToken, verifyAccessToken } from "./tokens.js";

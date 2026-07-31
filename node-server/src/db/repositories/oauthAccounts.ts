@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { DbExecutor } from "../client.js";
-import { oauthAccounts, type OauthAccount } from "../schema.js";
+import { oauthAccounts, type OauthAccount } from "../schema/index.js";
 
 export const GOOGLE = "google";
 

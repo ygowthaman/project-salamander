@@ -14,6 +14,8 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    /* The mock API fixtures under src/api/mocks are imported as modules. */
+    "resolveJsonModule": true,
 
     /* Linting */
     "strict": true,

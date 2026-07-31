@@ -92,7 +92,7 @@ of it:
 | Authentication | ~~Self-hosted email + password only~~ → **email + password *and* Google OAuth**, JWT session cookie | **Superseded during implementation** (see §3.7). Password auth still exists exactly as specified; Google sign-in was added alongside it so users are not forced to create another password. The JWT-cookie session model is unchanged. |
 | Multi-user model | **Single user per account** | Each account owns its own inventory/mandates/orders. Household sharing is explicitly deferred (see Non-goals + Future phases). |
 | LLM role | **Interpreter only — no conversational surface anywhere in the app** | The model turns free text into DTOs (and picks products / makes bounded judgment calls). It never holds a dialogue, never streams prose to the user, and carries no conversation state. This removes chat sessions, the `messages` table, and token streaming from the design entirely. |
-| Input model | **Natural-language-first**: free text → LLM interpret → DTO — for inventory stock updates, item definitions, mandates, grants, and search. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `current_stock`). |
+| Input model | **Natural-language-first**: free text → LLM interpret → DTO — for inventory stock updates, item definitions, mandates, grants, and search. Forms only for account creation and budgets. | Users won't hand-enter counts or trigger syntax; they type *"low on eggs"* / *"buy eggs when we're low, under $5"*. The LLM translates to structured JSON (for stock, a threshold-aware `quantity`). |
 | Commit policy | **Decided per module, not globally.** Two supported patterns: **direct commit** (interpret → validate → write → push) and **confirm-before-commit** (interpret → show draft → user approves → write). | Low-stakes, high-frequency edits favour direct commit; anything that drives real spending favours the confirm gate. The right trade-off differs per module, so each module states its choice when it is built (§5.0). |
 | Stored trigger form | **Structured `{op, field, value}`** | The scheduler must evaluate triggers deterministically; the free text is only the LLM's input, never what runs. |
 | Category model | **A first-class per-user `categories` table**, referenced by `inventory_items.category_id` and `budgets.category_id` | Category is the one classification the app *joins on* (budgets aggregate spend by it). As free text, an LLM writing `grocery` then `groceries` silently splits a budget instead of erroring. A unique row items point at makes that unrepresentable and makes renaming a one-row update. `unit` stays free text — nothing joins on it (§5.1.1). |
@@ -368,16 +368,16 @@ qualitative update. So inventory is **natural-language-first**, with the LLM tra
 language into the concrete numbers the mandates evaluate against.
 
 **Stock updates (the primary interaction).** The user types free text — e.g. *"low on eggs and milk,
-out of bread, still plenty of rice"* — and the LLM maps each phrase to a concrete `current_stock`
+out of bread, still plenty of rice"* — and the LLM maps each phrase to a concrete `quantity`
 value for that item. The translation is **threshold-aware**: for each named item the backend passes
-the LLM its `current_stock`, `par_level`, `unit`, and any mandate trigger threshold, so:
-  - *"out of eggs"* → `current_stock = 0`
+the LLM its `quantity`, `par_level`, `unit`, and any mandate trigger threshold, so:
+  - *"out of eggs"* → `quantity = 0`
   - *"low on eggs"* → a value at/below the reorder threshold (so the eggs mandate fires next run) —
     e.g. par is 6, trigger is `stock < 2` → set `1`
   - *"restocked / plenty of eggs"* → at or above `par_level`
   - a stated number (*"2 eggs left"*) → used verbatim
 This is exactly the mechanism behind the user's example: *"I'm low on eggs"* becomes a small
-`current_stock` that makes the `eggs < 2` mandate pass. **A single sentence updates many items at
+`quantity` that makes the `eggs < 2` mandate pass. **A single sentence updates many items at
 once.** Each write is logged to the history/audit trail (§6, `inventory_events`), with the original
 phrase kept as the `reason`.
 
@@ -675,7 +675,7 @@ costs the same whether the user tracks 5 items or 5,000.
   After placing, they mark the cart `placed`, which **closes the open reorder window** and
   **restocks the ordered items** (below); dismissing marks it `dismissed`.
 - **Restock-on-place (closes the reorder loop).** Marking a cart `placed` sets each ordered item's
-  `current_stock` to its **`restock_level`** ("full" — eggs → 12, bread → 1; §5.1). This is what
+  `quantity` to its **`restock_level`** ("full" — eggs → 12, bread → 1; §5.1). This is what
   prevents the same items being re-proposed on the next window: once placed, the item is at full, so
   its mandate no longer fires. It is an **optimistic** restock (placing ≠ delivered) — if a delivery
   is short or fails, the user corrects with a normal NL stock update (*"bread never came"* → back to
@@ -765,7 +765,7 @@ inventory_items
   id, user_id → users(id), name,
   category_id → categories(id) ON DELETE RESTRICT,
   unit (nullable),
-  current_stock (nullable), par_level (nullable),   -- null for track-only, non-consumable items
+  quantity (nullable), par_level (nullable),   -- null for track-only, non-consumable items
   restock_level (nullable),        -- the "full" quantity; stock is set to this when a reorder is
                                    --   PLACED (§5.9). eggs → 12, bread → 1. LLM-inferred, editable.
   attributes (jsonb, nullable),   -- freeform metadata: author/edition/ISBN, model number, etc.
@@ -981,7 +981,7 @@ tool/output schema (search is a fourth, read-only target — §8.2):
 
 1. **Inventory item definitions** — text → new `inventory_items` (category/unit/par inferred).
    Category resolves to an existing `category_id` or a proposed new name (§5.1.1).
-2. **Inventory stock updates** — text → a list of per-item `current_stock` changes.
+2. **Inventory stock updates** — text → a list of per-item `quantity` changes.
 3. **Mandates (+ optional grant)** and **standalone grants** — text → the mandate/grant schema.
 
 All three share the same interpretation core. They differ only in **when the write happens** — the
@@ -998,7 +998,7 @@ per-module commit pattern from §5.0.
          · the user's inventory item names + ids (so "eggs" → an existing item, not a new one)
          · the user's categories as {id, name} pairs (§5.1.1), so the model returns a
            `category_id` rather than a free-typed string that could drift from an existing row
-         · for stock updates specifically, per named item: current_stock, par_level, unit, and
+         · for stock updates specifically, per named item: quantity, par_level, unit, and
            the item's mandate trigger threshold — this is what lets "low"/"out"/"plenty" map to a
            concrete number that makes the right mandate fire
 2. Model returns structured JSON via tool use / structured output.
@@ -1011,7 +1011,7 @@ per-module commit pattern from §5.0.
 
 ```
 4a. Backend persists immediately, in one transaction:
-      - update current_stock / insert new inventory_items
+      - update quantity / insert new inventory_items
       - write inventory_events rows (reason = the original phrase)
 5a. Backend pushes the changed rows on the user's WS channel (§8.4).
 6a. The response carries the applied old→new diff + any unresolved names; the UI clears the input
@@ -1039,7 +1039,7 @@ Notes:
   timeout + a clear error is the failure mode.
 - **Threshold-aware translation is the crux of the inventory case.** Without feeding the item's
   `par_level`/trigger to the model, "low on eggs" is unquantifiable; with it, the model lands a
-  `current_stock` in the right band. The stored value is a plain number — the qualitative word is
+  `quantity` in the right band. The stored value is a plain number — the qualitative word is
   never persisted except as the audit `reason`.
 - Passing existing item names/ids is what lets the model link to an existing `inventory_item_id`
   instead of inventing one; unresolved names are surfaced, not silently created.
@@ -1095,7 +1095,7 @@ is stored:
 
 Emit the user's own words **and** the expansions — never one or the other. Qualitative stock
 language (*"am I low on…"*) resolves to `stock_filter`, not keywords, and is evaluated in SQL against
-`current_stock`/`par_level`.
+`quantity`/`par_level`.
 
 **Matching quality is now a SQL problem**, which is the right place for it: start with
 `ILIKE`/keyword matching over name + `attributes`, and move to `pg_trgm` or full-text when recall
@@ -1137,7 +1137,7 @@ direct-commit modules are not less protected, they simply skip the human approva
 prompt tweak can silently regress behavior, so keep a **checked-in golden eval set** — a few dozen
 input→expected cases per target:
 - interpretation: sentences → expected structured JSON (assert key fields, e.g. *"low on eggs"* →
-  `current_stock ≤ trigger`; *"a dozen"* → `12`; *"Add 1984 to my Books"* → `{name: "1984"}` with
+  `quantity ≤ trigger`; *"a dozen"* → `12`; *"Add 1984 to my Books"* → `{name: "1984"}` with
   the `Books` `category_id` when it exists and `new_category: "Books"` when it does not);
 - search: queries → expected matched item / "not found";
 - product selection: candidate lists + grant → expected pick / flag.
@@ -1344,7 +1344,7 @@ Domain:
 - [ ] Inventory updates, search, mandates, and grants are entered as free text; only account
       creation (and budgets) use a structured form.
 - [ ] `POST /inventory/interpret` turns *"Add 1984 to my Books"* into a committed `inventory_items`
-      row, and *"low on eggs and milk, out of bread"* into committed per-item `current_stock`
+      row, and *"low on eggs and milk, out of bread"* into committed per-item `quantity`
       changes that are **threshold-aware** (e.g. "low" lands at/below the item's mandate trigger so
       that mandate fires) — **in one call, with no confirm step** (§5.1). It writes
       `inventory_events` with the original phrase as `reason`, pushes the change on the user's WS
@@ -1393,7 +1393,7 @@ Domain:
 - [ ] Product matching selects one product per mandate from provider candidates within the grant,
       records the choice on `preferred_product` (reused next run), and **flags** rather than guesses
       when no candidate clearly fits.
-- [ ] Placing a cart sets each ordered item's `current_stock` to its `restock_level`, so the item is
+- [ ] Placing a cart sets each ordered item's `quantity` to its `restock_level`, so the item is
       **not re-proposed** on the next window; a short/failed delivery is corrected by a normal NL
       stock update.
 - [ ] A golden eval set (§8.3) covers interpretation, search, and product selection, runs as a

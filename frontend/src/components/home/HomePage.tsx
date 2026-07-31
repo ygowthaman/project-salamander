@@ -1,35 +1,39 @@
+import { AppShell } from "@mantine/core";
+import { useState } from "react";
 import { useAuth } from "../../auth/useAuth";
-import "./HomePage.css";
+import { AppHeader } from "./AppHeader";
+import { View, ViewBody } from "./views";
 
 /**
- * The signed-in shell.
+ * The signed-in shell — where a user lands straight after logging in.
  *
- * Deliberately empty of product surface: the chat window that used to live here
- * is gone, and inventory (roadmap Phase 1b) has not landed. It exists so the
- * authenticated half of the app is still reachable and sign-out still works —
- * the inventory table and its natural-language input replace this body.
+ * AppShell.Header is fixed, so the brand, module tabs, cart and menu stay on
+ * screen no matter what; only AppShell.Main swaps as the view changes. There is
+ * no router yet, so the active view is plain local state — swap this for route
+ * params when one lands.
  */
 export function HomePage() {
   const { user, signOut } = useAuth();
+  const [view, setView] = useState<View>("inventory");
 
   return (
-    <div className="home">
-      <header className="home__header">
-        <h1 className="home__title">Salamander</h1>
-        <div className="home__account">
-          {user?.avatar_url && <img className="home__avatar" src={user.avatar_url} alt="" />}
-          <span className="home__user">{user?.display_name ?? user?.email}</span>
-          <button className="home__signout" onClick={() => void signOut()}>
-            Sign out
-          </button>
-        </div>
-      </header>
+    // The marker index.css keys the background watermark off, so it shows
+    // behind the signed-in views but never on the login screen.
+    // Header height tracks the logo in AppHeader.module.css — 50px mark plus
+    // 5px clearance top and bottom.
+    <AppShell header={{ height: 60 }} padding="md" data-app-surface="shell">
+      <AppShell.Header>
+        <AppHeader
+          view={view}
+          onNavigate={setView}
+          onSignOut={() => void signOut()}
+          accountLabel={user?.display_name ?? user?.email}
+        />
+      </AppShell.Header>
 
-      <main className="home__body">
-        <p className="home__empty">
-          You're signed in. Inventory tracking is the next thing to land here.
-        </p>
-      </main>
-    </div>
+      <AppShell.Main>
+        <ViewBody view={view} />
+      </AppShell.Main>
+    </AppShell>
   );
 }

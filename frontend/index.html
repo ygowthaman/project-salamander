@@ -1,8 +1,15 @@
 <!doctype html>
-<html lang="en">
+<!-- Set before React mounts so the page never flashes light on first paint.
+     MantineProvider forces the same value; this only covers the gap before it runs. -->
+<html lang="en" data-mantine-color-scheme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <!-- The simplified mark: a favicon renders at 16px, where the full roundel
+         turns to mush. Points at the bundled asset rather than a copy in
+         public/, so the tab icon and the header logo stay the same file. -->
+    <link rel="icon" type="image/svg+xml" href="/src/assets/simple_logo.svg" />
     <title>Salamander</title>
   </head>
   <body>

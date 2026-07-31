@@ -1,0 +1,17 @@
+.logo {
+  /* Sized against the 60px AppShell.Header in HomePage — the two move
+     together, leaving 5px of clearance above and below. */
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+  /* The mark is a transparent-cornered roundel, so it needs no tile behind it
+     and no radius to clip — it sits directly on the header. */
+}
+
+.brand {
+  white-space: nowrap;
+}
+
+.nav {
+  min-width: 0;
+}

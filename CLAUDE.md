@@ -48,7 +48,7 @@ Current context files:
 
 | Layer | Choice |
 |---|---|
-| Frontend | React + Vite + TypeScript + Tailwind CSS |
+| Frontend | React + Vite + TypeScript + Mantine (`@mantine/core`) + Tabler icons |
 | Backend | Node.js 20 + TypeScript + Fastify |
 | LLM | Claude API via Anthropic TypeScript SDK (`claude-sonnet-4-6`) |
 | Real-time | WebSockets (`@fastify/websocket`) — server→client push only |

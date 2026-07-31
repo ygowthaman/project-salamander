@@ -218,7 +218,8 @@ npm run dev          # hot-reloading dev server on :8000
 npm run typecheck    # tsc --noEmit
 npm run build        # compile to dist/
 npm start            # run the compiled build
-npm run db:migrate   # apply migrations without starting the server
+npm run db:migrate   # DEV: drop every table, then replay all migrations
+npm run db:migrate:preserve  # apply pending migrations without dropping anything
 npm run db:generate  # regenerate drizzle/ after editing src/db/schema.ts
 
 # Frontend

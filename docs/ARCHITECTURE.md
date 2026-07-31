@@ -410,7 +410,7 @@ the product runs through it:
 ```
 1. Client POSTs free text:  { "text": "Add 1984 to my Books" }
 2. Assemble context:        the user's item names + ids, and for stock updates
-                            each named item's current_stock / par_level / unit /
+                            each named item's quantity / par_level / unit /
                             mandate threshold
 3. Interpret:               agent-layer call → structured JSON via tool use
 4. Validate:                the SAME zod schema the route would accept directly.
