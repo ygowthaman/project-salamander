@@ -1,0 +1,21 @@
+.logo {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--mantine-radius-md);
+  font-size: 18px;
+  line-height: 1;
+  /* Scheme-aware surface token rather than a fixed grey, so the mark doesn't
+     glow white if the app is ever unlocked from dark. */
+  background: var(--mantine-color-default-hover);
+}
+
+.brand {
+  white-space: nowrap;
+}
+
+.nav {
+  min-width: 0;
+}

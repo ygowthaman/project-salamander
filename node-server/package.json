@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx test/auth-guards.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts --reset",
+    "db:migrate:preserve": "tsx src/db/migrate.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",

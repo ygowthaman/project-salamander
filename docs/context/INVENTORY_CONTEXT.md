@@ -347,9 +347,12 @@ _ROADMAP 1b_
       there is **no router installed**. Inventory + categories are separate pages, so this chunk needs
       either `react-router-dom` (deep links, back button — recommended) or a hand-rolled view-state
       switch (zero deps, no URLs). This is the module's only genuinely new dependency — see §5.
-- [ ] **Styling convention.** Tailwind *is* configured (`tailwind.config.js`, `postcss.config.js`,
-      directives in `index.css`) but existing components use hand-written per-component `.css` files.
-      Pick one for the new pages rather than adding a third pattern.
+- [x] **Styling convention — settled.** Tailwind has been removed. The app uses **Mantine**
+      (`@mantine/core` + `@mantine/hooks`, themed in `src/theme.ts`) with **Tabler** icons
+      (`@tabler/icons-react`). Build components out of Mantine primitives and reach for its `Table`,
+      `Select` and form inputs on the new pages. Mantine's own props (`gap`, `px`, `fw`, `c`, `maw`)
+      are the component API — use them freely. Anything beyond them goes in a sibling
+      `*.module.css`; **no inline `style={{…}}` objects.**
 - [ ] Categories management page: list with item counts, create / rename / delete (a **form**, not NL)
 - [ ] Inventory list view + create/edit form, category as a **picker over the user's own categories**
 - [ ] Live updates from the WS channel
@@ -634,8 +637,8 @@ Until then, treat this section as the diff between the docs and reality.
 - [ ] **`API_CONTEXT.md` → "Adding a new endpoint"** says register the plugin in `server.ts`. Route
       plugins are registered in **`app.ts`**; `server.ts` only runs migrations and binds the port.
       Actively misleading for the next session, so worth fixing early rather than at Chunk 8.
-- [ ] **`CLAUDE.md` tech-stack table** lists Tailwind, which is configured but unused — the shipped
-      components use per-component `.css` files. Either is fine; the docs should say which.
+- [x] **`CLAUDE.md` tech-stack table** listed Tailwind, which was configured but unused. Resolved:
+      Tailwind is gone and the table now names Mantine + Tabler, which is what the components use.
 
 **From D3 (reorder levels ship in Phase 1):**
 

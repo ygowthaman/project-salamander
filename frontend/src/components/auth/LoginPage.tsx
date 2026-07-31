@@ -1,7 +1,20 @@
+import {
+  Alert,
+  Anchor,
+  Button,
+  Center,
+  Divider,
+  Paper,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { useState, FormEvent } from "react";
 import { startGoogleLogin } from "../../api/auth";
 import { useAuth } from "../../auth/useAuth";
-import "./LoginPage.css";
 
 /** Codes the backend appends to its /login redirect when OAuth fails. */
 const OAUTH_ERRORS: Record<string, string> = {
@@ -56,86 +69,89 @@ export function LoginPage() {
   }
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <h1 className="login-card__title">🦎Salamander</h1>
-        <p className="login-card__subtitle">
+    // No explicit background: in dark mode Mantine's body sits a step darker
+    // than Paper's default surface, so the card separates on its own.
+    <Center h="100%" p="md">
+      <Paper w="100%" maw={400} withBorder shadow="sm" radius="md" px="xl" py={32}>
+        <Title order={1} size="h3" ta="center">
+          🦎 Salamander
+        </Title>
+        <Text size="sm" c="dimmed" ta="center" mt={4} mb="lg">
           {mode === "signin" ? "Sign in to your account" : "Create an account"}
-        </p>
+        </Text>
 
         {error && (
-          <p className="login-card__error" role="alert">
+          <Alert color="red" variant="light" mb="md" role="alert">
             {error}
-          </p>
+          </Alert>
         )}
 
-        <button type="button" className="login-card__google" onClick={startGoogleLogin}>
-          <span className="login-card__google-mark" aria-hidden="true">
-            G
-          </span>
+        <Button
+          fullWidth
+          variant="default"
+          leftSection={<IconBrandGoogleFilled size={16} />}
+          onClick={startGoogleLogin}
+        >
           Continue with Google
-        </button>
+        </Button>
 
-        <div className="login-card__divider">
-          <span>or</span>
-        </div>
+        <Divider label="or" labelPosition="center" my="lg" />
 
-        <form className="login-card__form" onSubmit={handleSubmit}>
-          {mode === "signup" && (
-            <label className="login-card__label">
-              Name <span className="login-card__optional">(optional)</span>
-              <input
-                className="login-card__input"
-                type="text"
+        <form onSubmit={handleSubmit}>
+          <Stack gap="md">
+            {mode === "signup" && (
+              <TextInput
+                label="Name"
+                description="Optional"
                 value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                onChange={(e) => setDisplayName(e.currentTarget.value)}
                 autoComplete="name"
               />
-            </label>
-          )}
+            )}
 
-          <label className="login-card__label">
-            Email
-            <input
-              className="login-card__input"
+            <TextInput
+              label="Email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.currentTarget.value)}
               autoComplete="email"
               required
             />
-          </label>
 
-          <label className="login-card__label">
-            Password
-            <input
-              className="login-card__input"
-              type="password"
+            <PasswordInput
+              label="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => setPassword(e.currentTarget.value)}
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              description={mode === "signup" ? "At least 12 characters." : undefined}
               // Mirrors the server's zod rule so the failure is caught before a
               // round-trip; the server remains the actual enforcer.
               minLength={mode === "signup" ? 12 : undefined}
               required
             />
-          </label>
 
-          {mode === "signup" && (
-            <p className="login-card__hint">At least 12 characters.</p>
-          )}
-
-          <button className="login-card__submit" type="submit" disabled={busy}>
-            {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
-          </button>
+            <Button type="submit" fullWidth loading={busy}>
+              {mode === "signin" ? "Sign in" : "Create account"}
+            </Button>
+          </Stack>
         </form>
 
-        <button type="button" className="login-card__switch" onClick={switchMode}>
+        <Anchor
+          component="button"
+          type="button"
+          onClick={switchMode}
+          size="xs"
+          c="dimmed"
+          ta="center"
+          mt="lg"
+          w="100%"
+          display="block"
+        >
           {mode === "signin"
             ? "Don't have an account? Create one"
             : "Already have an account? Sign in"}
-        </button>
-      </div>
-    </div>
+        </Anchor>
+      </Paper>
+    </Center>
   );
 }

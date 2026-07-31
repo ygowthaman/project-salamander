@@ -61,7 +61,15 @@ The related upgrade note: `drizzle-orm` 0.45 changed the `pgTable` `extraConfig`
 
   Because `pg` parses `int4` directly to a JS `number`, there is no string round-trip and repositories need no parsing layer. **That changes if a `numeric` column is ever added** (money on `budgets` is the likely first): `pg` returns `numeric` as a *string* to avoid float precision loss, and converting it is then a deliberate per-column decision, not a global type-parser override.
 
-- **migrate.ts** — runs pending migrations. Called by `server.ts` at boot; also runnable standalone via `npm run db:migrate`.
+- **migrate.ts** — runs pending migrations. Called by `server.ts` at boot; also runnable standalone.
+
+  **`npm run db:migrate` passes `--reset`: it drops every table in `public`, drops drizzle's `drizzle.__drizzle_migrations` bookkeeping schema, and replays the chain from empty.** This is deliberate for the current phase and safe only because no database holds data worth keeping. The reason it is the default rather than an opt-in: the migrator keys on a *hash of each SQL file*, so while the schema is still being drafted — squashing the baseline, amending a table before anything ships — every edit to an applied migration leaves that database permanently stuck, re-running a "pending" file against tables that already exist. Recovering by hand costs more than a wipe.
+
+  `npm run db:migrate:preserve` is the same script without the flag: apply pending migrations, drop nothing. Use it the moment a database holds anything you would mind losing.
+
+  **Server startup never drops.** `runMigrations()` is the only thing `server.ts` imports; `resetSchema()` is reachable only from the CLI branch, only under `--reset`, and refuses outright when `NODE_ENV=production`. The script prints the target `host:port/database` before dropping, because the failure mode that matters here is a `.env` pointed somewhere other than local Postgres.
+
+  **Flip the default to `db:migrate:preserve` before any database holds real data** — that is the switch this arrangement is waiting on, not a cleanup someone will notice on their own.
 
 - **repositories/** — query logic, one module per table. The chat repositories (`sessions.ts`, `messages.ts`) are gone; the domain repositories join the auth ones below.
 

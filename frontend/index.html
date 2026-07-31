@@ -1,8 +1,11 @@
 <!doctype html>
-<html lang="en">
+<!-- Set before React mounts so the page never flashes light on first paint.
+     MantineProvider forces the same value; this only covers the gap before it runs. -->
+<html lang="en" data-mantine-color-scheme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
     <title>Salamander</title>
   </head>
   <body>
