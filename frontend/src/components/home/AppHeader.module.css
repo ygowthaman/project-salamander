@@ -1,15 +1,11 @@
 .logo {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
+  /* Sized against the 60px AppShell.Header in HomePage — the two move
+     together, leaving 5px of clearance above and below. */
+  width: 50px;
+  height: 50px;
   flex-shrink: 0;
-  border-radius: var(--mantine-radius-md);
-  font-size: 18px;
-  line-height: 1;
-  /* Scheme-aware surface token rather than a fixed grey, so the mark doesn't
-     glow white if the app is ever unlocked from dark. */
-  background: var(--mantine-color-default-hover);
+  /* The mark is a transparent-cornered roundel, so it needs no tile behind it
+     and no radius to clip — it sits directly on the header. */
 }
 
 .brand {

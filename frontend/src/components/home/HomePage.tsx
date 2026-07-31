@@ -17,7 +17,11 @@ export function HomePage() {
   const [view, setView] = useState<View>("inventory");
 
   return (
-    <AppShell header={{ height: 60 }} padding="md">
+    // The marker index.css keys the background watermark off, so it shows
+    // behind the signed-in views but never on the login screen.
+    // Header height tracks the logo in AppHeader.module.css — 50px mark plus
+    // 5px clearance top and bottom.
+    <AppShell header={{ height: 60 }} padding="md" data-app-surface="shell">
       <AppShell.Header>
         <AppHeader
           view={view}

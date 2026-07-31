@@ -4,6 +4,7 @@ import {
   Button,
   Center,
   Divider,
+  Image,
   Paper,
   PasswordInput,
   Stack,
@@ -13,6 +14,7 @@ import {
 } from "@mantine/core";
 import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { useState, FormEvent } from "react";
+import logoUrl from "../../assets/simple_logo.svg";
 import { startGoogleLogin } from "../../api/auth";
 import { useAuth } from "../../auth/useAuth";
 
@@ -73,8 +75,10 @@ export function LoginPage() {
     // than Paper's default surface, so the card separates on its own.
     <Center h="100%" p="md">
       <Paper w="100%" maw={400} withBorder shadow="sm" radius="md" px="xl" py={32}>
+        {/* Decorative: the title right below it already names the app. */}
+        <Image src={logoUrl} alt="" w={200} h={200} mx="auto" mb="md" />
         <Title order={1} size="h3" ta="center">
-          🦎 Salamander
+          Salamander
         </Title>
         <Text size="sm" c="dimmed" ta="center" mt={4} mb="lg">
           {mode === "signin" ? "Sign in to your account" : "Create an account"}

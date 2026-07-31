@@ -1,4 +1,4 @@
-import { ActionIcon, Anchor, Box, Group, Menu, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Anchor, Group, Image, Menu, Text, Tooltip } from "@mantine/core";
 import {
   IconLogout,
   IconMenu2,
@@ -6,6 +6,8 @@ import {
   IconShoppingCart,
 } from "@tabler/icons-react";
 import { View } from "./views";
+// The simplified mark, not the full roundel — it stays legible at 40px.
+import logoUrl from "../../assets/simple_logo.svg";
 import classes from "./AppHeader.module.css";
 
 /** The module links, in order. */
@@ -26,10 +28,8 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
   return (
     <Group h="100%" px="md" gap="xl" wrap="nowrap">
       <Group gap="sm" wrap="nowrap">
-        {/* Reserved for the logo — swap this for an <img> when there is one. */}
-        <Box className={classes.logo} aria-hidden>
-          🦎
-        </Box>
+        {/* Decorative: the wordmark beside it already names the app. */}
+        <Image src={logoUrl} alt="" className={classes.logo} />
         <Text fw={700} size="lg" className={classes.brand}>
           Salamander
         </Text>
