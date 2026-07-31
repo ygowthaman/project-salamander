@@ -1,4 +1,4 @@
-import { ActionIcon, Anchor, Group, Image, Menu, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Anchor, Group, Image, Menu, Tooltip } from "@mantine/core";
 import {
   IconLogout,
   IconMenu2,
@@ -8,12 +8,13 @@ import {
 import { View } from "./views";
 // The simplified mark, not the full roundel — it stays legible at 40px.
 import logoUrl from "../../assets/simple_logo.svg";
+import { Wordmark } from "../Wordmark";
 import classes from "./AppHeader.module.css";
 
 /** The module links, in order. */
 const LINKS: { value: View; label: string }[] = [
-  { value: "inventory", label: "Inventory" },
-  { value: "schedules", label: "Schedules" },
+  { value: "inventory", label: "INVENTORY" },
+  { value: "schedules", label: "SCHEDULE" },
 ];
 
 interface AppHeaderProps {
@@ -30,9 +31,7 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
       <Group gap="sm" wrap="nowrap">
         {/* Decorative: the wordmark beside it already names the app. */}
         <Image src={logoUrl} alt="" className={classes.logo} />
-        <Text fw={700} size="lg" className={classes.brand}>
-          Salamander
-        </Text>
+        <Wordmark order={2} />
       </Group>
 
       {/* No router yet, so these are buttons wearing link styling — swap
@@ -45,10 +44,13 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
               key={link.value}
               component="button"
               type="button"
-              size="sm"
+              size="lg"
               underline="never"
               fw={active ? 600 : 500}
-              c={active ? "var(--mantine-color-text)" : "dimmed"}
+              // The active colour is the brand green, applied in the stylesheet
+              // off `aria-current` so the marker and the accent cannot drift.
+              c={active ? undefined : "dimmed"}
+              className={classes.navLink}
               aria-current={active ? "page" : undefined}
               onClick={() => onNavigate(link.value)}
             >
@@ -60,9 +62,11 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
 
       <Group gap="xs" wrap="nowrap" ml="auto">
         <Tooltip label="Cart">
+          {/* Selected cart gets the same accent as a selected nav item; idle it
+              stays grey so the header has one highlight at a time. */}
           <ActionIcon
             variant={view === "cart" ? "light" : "subtle"}
-            color="gray"
+            color={view === "cart" ? "salamander" : "gray"}
             size="lg"
             aria-label="Cart"
             onClick={() => onNavigate("cart")}

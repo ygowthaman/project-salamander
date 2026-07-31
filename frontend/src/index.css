@@ -6,6 +6,25 @@ body,
   height: 100%;
 }
 
+/* Brand greens, lifted straight off the logo mark (`assets/simple_logo.svg`) —
+   all three the mark actually uses: the lime on the body, the mid green on the
+   head and tail, and the dark green on the small detail paths.
+
+   `--salamander-green` is the app's accent — active nav item, selected states,
+   anything that needs to read as "this one". The light one is the brighter
+   relative it pairs with (rules, underlines, anything that has to stay visible
+   at 2px); the deep one is the far end of the ramp, for pressed and filled
+   states where the accent itself would be too loud.
+
+   These stay in sync by hand with the `salamander` palette in `theme.ts`:
+   shade 6 there is `--salamander-green`, shade 9 is `--salamander-green-deep`.
+   Change one, change the other. */
+:root {
+  --salamander-green-light: #84bf44;
+  --salamander-green: #40a04b;
+  --salamander-green-deep: #1d6d33;
+}
+
 /* Watermark. One fixed layer on the body rather than a per-page element, so
    every signed-in view gets it without having to opt in. Fixed, not scrolling,
    so a long inventory list slides over a stationary mark.

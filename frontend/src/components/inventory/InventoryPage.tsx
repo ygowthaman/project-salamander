@@ -89,7 +89,7 @@ export function InventoryPage() {
           under them, so the interpreted surface is always reachable. */}
       <Stack gap="lg" pb="md">
         <div>
-          <Title order={2}>Inventory</Title>
+          {/* <Title order={2} c="var(--salamander-green-light)">Inventory</Title> */}
           <Text size="sm" c="dimmed">
             What you own, and how much of it is left.
           </Text>

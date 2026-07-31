@@ -10,13 +10,14 @@ import {
   Stack,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { IconBrandGoogleFilled } from "@tabler/icons-react";
 import { useState, FormEvent } from "react";
 import logoUrl from "../../assets/simple_logo.svg";
 import { startGoogleLogin } from "../../api/auth";
 import { useAuth } from "../../auth/useAuth";
+import { Wordmark } from "../Wordmark";
+import classes from "./LoginPage.module.css";
 
 /** Codes the backend appends to its /login redirect when OAuth fails. */
 const OAUTH_ERRORS: Record<string, string> = {
@@ -76,10 +77,8 @@ export function LoginPage() {
     <Center h="100%" p="md">
       <Paper w="100%" maw={400} withBorder shadow="sm" radius="md" px="xl" py={32}>
         {/* Decorative: the title right below it already names the app. */}
-        <Image src={logoUrl} alt="" w={200} h={200} mx="auto" mb="md" />
-        <Title order={1} size="h3" ta="center">
-          Salamander
-        </Title>
+        <Image src={logoUrl} alt="" w={120} h={120} mx="auto" mb="md" />
+        <Wordmark order={1} className={classes.title} />
         <Text size="sm" c="dimmed" ta="center" mt={4} mb="lg">
           {mode === "signin" ? "Sign in to your account" : "Create an account"}
         </Text>

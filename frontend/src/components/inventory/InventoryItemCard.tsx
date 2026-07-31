@@ -56,7 +56,7 @@ export function InventoryItemCard({
           one column of a three-up grid, so the two cannot share a row. */}
       <Stack gap="sm" mb="md">
         <Group gap="xs" wrap="nowrap">
-          <Text fw={600} size="lg" truncate className={classes.category}>
+          <Text fw={600} size="lg" truncate className={classes.category} c="var(--salamander-green-light)">
             {category}
           </Text>
           <Badge variant="light" color="gray" radius="sm">
