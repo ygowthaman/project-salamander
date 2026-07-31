@@ -1,0 +1,50 @@
+.card {
+  background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+  /* The grid stretches every card in a row to the tallest one; this makes the
+     card fill that height instead of floating at the top of its cell. */
+  height: 100%;
+}
+
+.category {
+  /* min-width:0 is what actually lets `truncate` bite inside the flex row —
+     without it a long category name would push the count badge out of the card. */
+  min-width: 0;
+}
+
+.searchInput {
+  /* Centres the typed text and the placeholder within the full-width field. */
+  text-align: center;
+}
+
+/* ScrollArea.Autosize sets `data-autosize`, which Mantine styles with
+   `min-width: min-content` on the content element (styles.css). That is the
+   opposite of what a fixed-width grid cell needs: the rows then refuse to
+   shrink below the widest item name plus its three action icons, and
+   `scrollbars="y"` clips the overflow — which is what hid the edit and delete
+   buttons behind the scrollbar. `100%` restores the plain ScrollArea default so
+   rows size to the card and long names truncate.
+
+   !important because Mantine's rule is two classes deep (`:where()` adds no
+   specificity) and this one is a single class. */
+.content {
+  min-width: 100% !important;
+}
+
+.item {
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-sm);
+}
+
+/* A separator between rows rather than around them, so the first row sits flush
+   against the card header and the last leaves no trailing line. */
+.item + .item {
+  border-top: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-4));
+}
+
+.item:hover {
+  background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
+}
+
+.itemText {
+  min-width: 0;
+}

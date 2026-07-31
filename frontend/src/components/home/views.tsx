@@ -1,11 +1,7 @@
 import { Center, Stack, Text, Title } from "@mantine/core";
-import {
-  IconCalendarClock,
-  IconPackage,
-  IconSettings,
-  IconShoppingCart,
-} from "@tabler/icons-react";
+import { IconCalendarClock, IconSettings, IconShoppingCart } from "@tabler/icons-react";
 import { ReactNode } from "react";
+import { InventoryPage } from "../inventory/InventoryPage";
 
 /** Every destination the header can switch the viewport to. */
 export type View = "inventory" | "schedules" | "cart" | "settings";
@@ -23,16 +19,6 @@ function Placeholder({ icon, title, body }: { icon: ReactNode; title: string; bo
         </Text>
       </Stack>
     </Center>
-  );
-}
-
-export function InventoryView() {
-  return (
-    <Placeholder
-      icon={<IconPackage size={40} stroke={1.4} />}
-      title="Inventory"
-      body="What you own, and how much of it is left."
-    />
   );
 }
 
@@ -70,7 +56,7 @@ export function SettingsView() {
 export function ViewBody({ view }: { view: View }) {
   switch (view) {
     case "inventory":
-      return <InventoryView />;
+      return <InventoryPage />;
     case "schedules":
       return <SchedulesView />;
     case "cart":

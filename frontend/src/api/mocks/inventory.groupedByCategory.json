@@ -1,0 +1,335 @@
+{
+  "group_by": "category",
+  "groups": [
+    {
+      "category": {
+        "id": "0d3f6f1c-8f4a-4b6e-9a21-1f2c7b5d0a11",
+        "name": "Groceries"
+      },
+      "items": [
+        {
+          "id": "3a7c1e90-2b44-4f8d-b1c6-7e2a9d4f0c01",
+          "category_id": "0d3f6f1c-8f4a-4b6e-9a21-1f2c7b5d0a11",
+          "name": "Eggs",
+          "unit": "dozen",
+          "quantity": 1,
+          "attributes": { "brand": "Happy Hens", "size": "large" },
+          "created_at": "2026-06-02T09:14:00.000Z",
+          "last_updated": "2026-07-29T18:02:11.000Z"
+        },
+        {
+          "id": "5c9b2d31-6e10-49aa-8f77-b3d5c1e28f02",
+          "category_id": "0d3f6f1c-8f4a-4b6e-9a21-1f2c7b5d0a11",
+          "name": "Whole milk",
+          "unit": "litre",
+          "quantity": 2,
+          "attributes": null,
+          "created_at": "2026-06-02T09:14:00.000Z",
+          "last_updated": "2026-07-30T07:41:52.000Z"
+        },
+        {
+          "id": "7f10a8b2-4c3d-4e51-9d0a-2c6b8e7f1a03",
+          "category_id": "0d3f6f1c-8f4a-4b6e-9a21-1f2c7b5d0a11",
+          "name": "Sourdough bread",
+          "unit": "loaf",
+          "quantity": 0,
+          "attributes": null,
+          "created_at": "2026-06-11T16:30:00.000Z",
+          "last_updated": "2026-07-31T08:12:04.000Z"
+        },
+        {
+          "id": "91b4c6d8-0a2e-4f73-8b19-5d7c3a2e9b04",
+          "category_id": "0d3f6f1c-8f4a-4b6e-9a21-1f2c7b5d0a11",
+          "name": "Olive oil",
+          "unit": "bottle",
+          "quantity": 1,
+          "attributes": { "origin": "Greece" },
+          "created_at": "2026-05-21T11:05:00.000Z",
+          "last_updated": "2026-07-18T19:20:47.000Z"
+        }
+      ]
+    },
+    {
+      "category": {
+        "id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+        "name": "Books"
+      },
+      "items": [
+        {
+          "id": "b2c8e5a1-7d64-4a09-9f31-6e0b4d8c2a05",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "1984",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "George Orwell", "format": "paperback" },
+          "created_at": "2026-07-04T21:47:00.000Z",
+          "last_updated": "2026-07-04T21:47:00.000Z"
+        },
+        {
+          "id": "c4d9f6b3-8e75-4b1a-a042-7f1c5e9d3b06",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Lord of the Rings",
+          "unit": null,
+          "quantity": 1,
+          "attributes": {
+            "author": "J. R. R. Tolkien",
+            "edition": "50th Anniversary",
+            "isbn": "9780618640157"
+          },
+          "created_at": "2026-03-19T13:22:00.000Z",
+          "last_updated": "2026-03-19T13:22:00.000Z"
+        },
+        {
+          "id": "d6e0a7c4-9f86-4c2b-b153-801d6f0e4c07",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Design of Everyday Things",
+          "unit": null,
+          "quantity": null,
+          "attributes": { "author": "Don Norman" },
+          "created_at": "2026-01-08T10:00:00.000Z",
+          "last_updated": "2026-01-08T10:00:00.000Z"
+        },
+        {
+          "id": "a1b2c3d4-0e11-4f22-8a33-b44c55d66e10",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Dune",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Frank Herbert", "format": "paperback" },
+          "created_at": "2025-09-12T19:05:00.000Z",
+          "last_updated": "2025-09-12T19:05:00.000Z"
+        },
+        {
+          "id": "b2c3d4e5-1f22-4033-9b44-c55d66e77f11",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Left Hand of Darkness",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Ursula K. Le Guin" },
+          "created_at": "2025-10-01T12:20:00.000Z",
+          "last_updated": "2025-10-01T12:20:00.000Z"
+        },
+        {
+          "id": "c3d4e5f6-2033-4144-ac55-d66e77f88012",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Thinking, Fast and Slow",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Daniel Kahneman", "format": "hardcover" },
+          "created_at": "2025-10-18T08:40:00.000Z",
+          "last_updated": "2025-10-18T08:40:00.000Z"
+        },
+        {
+          "id": "d4e5f607-3144-4255-bd66-e77f88099113",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Pragmatic Programmer",
+          "unit": null,
+          "quantity": 2,
+          "attributes": {
+            "author": "Hunt & Thomas",
+            "edition": "20th Anniversary",
+            "isbn": "9780135957059"
+          },
+          "created_at": "2025-11-14T15:55:00.000Z",
+          "last_updated": "2026-02-01T10:10:00.000Z"
+        },
+        {
+          "id": "e5f60718-4255-4366-ce77-f8809911a214",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Sapiens",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Yuval Noah Harari" },
+          "created_at": "2025-12-02T20:15:00.000Z",
+          "last_updated": "2025-12-02T20:15:00.000Z"
+        },
+        {
+          "id": "f6071829-5366-4477-df88-09911aa2b315",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Neuromancer",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "William Gibson", "format": "paperback" },
+          "created_at": "2025-12-21T17:30:00.000Z",
+          "last_updated": "2025-12-21T17:30:00.000Z"
+        },
+        {
+          "id": "0718293a-6477-4588-e099-11aa2bb3c416",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Name of the Wind",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Patrick Rothfuss" },
+          "created_at": "2026-01-15T11:00:00.000Z",
+          "last_updated": "2026-01-15T11:00:00.000Z"
+        },
+        {
+          "id": "18293a4b-7588-4699-f1aa-22bb3cc4d517",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Structure and Interpretation of Computer Programs",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Abelson & Sussman", "edition": "2nd" },
+          "created_at": "2026-01-22T09:25:00.000Z",
+          "last_updated": "2026-01-22T09:25:00.000Z"
+        },
+        {
+          "id": "293a4b5c-8699-47aa-02bb-33cc4dd5e618",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Dispossessed",
+          "unit": null,
+          "quantity": null,
+          "attributes": { "author": "Ursula K. Le Guin" },
+          "created_at": "2026-02-03T14:50:00.000Z",
+          "last_updated": "2026-02-03T14:50:00.000Z"
+        },
+        {
+          "id": "3a4b5c6d-97aa-48bb-13cc-44dd5ee6f719",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Piranesi",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Susanna Clarke", "format": "hardcover" },
+          "created_at": "2026-02-19T18:05:00.000Z",
+          "last_updated": "2026-02-19T18:05:00.000Z"
+        },
+        {
+          "id": "4b5c6d7e-a8bb-49cc-24dd-55ee6ff7081a",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "A Wizard of Earthsea",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Ursula K. Le Guin" },
+          "created_at": "2026-03-02T10:35:00.000Z",
+          "last_updated": "2026-03-02T10:35:00.000Z"
+        },
+        {
+          "id": "5c6d7e8f-b9cc-4add-35ee-66ff70081b2b",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Project Hail Mary",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Andy Weir" },
+          "created_at": "2026-03-28T21:10:00.000Z",
+          "last_updated": "2026-03-28T21:10:00.000Z"
+        },
+        {
+          "id": "6d7e8f90-cadd-4bee-46ff-770081b2c33c",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Three-Body Problem",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Liu Cixin", "translator": "Ken Liu" },
+          "created_at": "2026-04-09T13:45:00.000Z",
+          "last_updated": "2026-04-09T13:45:00.000Z"
+        },
+        {
+          "id": "7e8f90a1-dbee-4cff-5700-81b2c33d44d4",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Refactoring",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Martin Fowler", "edition": "2nd" },
+          "created_at": "2026-04-24T08:00:00.000Z",
+          "last_updated": "2026-04-24T08:00:00.000Z"
+        },
+        {
+          "id": "8f90a1b2-ecff-4d00-6811-b2c33d44e55e",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "The Hobbit",
+          "unit": null,
+          "quantity": 2,
+          "attributes": { "author": "J. R. R. Tolkien", "format": "paperback" },
+          "created_at": "2026-05-06T16:25:00.000Z",
+          "last_updated": "2026-06-30T09:30:00.000Z"
+        },
+        {
+          "id": "90a1b2c3-fd00-4e11-7922-c33d44e55f6f",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Norwegian Wood",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Haruki Murakami" },
+          "created_at": "2026-05-25T19:40:00.000Z",
+          "last_updated": "2026-05-25T19:40:00.000Z"
+        },
+        {
+          "id": "a1b2c3d4-0e11-4f22-8a33-d44e55f6607a",
+          "category_id": "1e8b4a72-3d59-4c60-8e12-9a4f6c2b7d22",
+          "name": "Gödel, Escher, Bach",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "author": "Douglas Hofstadter", "format": "hardcover" },
+          "created_at": "2026-06-14T12:15:00.000Z",
+          "last_updated": "2026-06-14T12:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": {
+        "id": "2f9c5b83-4e6a-4d71-9f23-0b5a7d3c8e33",
+        "name": "Household"
+      },
+      "items": [
+        {
+          "id": "e8f1b8d5-0a97-4d3c-8264-912e7a1f5d08",
+          "category_id": "2f9c5b83-4e6a-4d71-9f23-0b5a7d3c8e33",
+          "name": "Dish soap",
+          "unit": "bottle",
+          "quantity": 3,
+          "attributes": null,
+          "created_at": "2026-04-27T08:30:00.000Z",
+          "last_updated": "2026-07-12T12:05:33.000Z"
+        },
+        {
+          "id": "fa02c9e6-1ba8-4e4d-9375-a23f8b2a6e09",
+          "category_id": "2f9c5b83-4e6a-4d71-9f23-0b5a7d3c8e33",
+          "name": "Paper towels",
+          "unit": "roll",
+          "quantity": 0,
+          "attributes": null,
+          "created_at": "2026-04-27T08:30:00.000Z",
+          "last_updated": "2026-07-31T07:58:19.000Z"
+        },
+        {
+          "id": "0b13dae7-2cb9-4f5e-a486-b34a9c3b7f0a",
+          "category_id": "2f9c5b83-4e6a-4d71-9f23-0b5a7d3c8e33",
+          "name": "Light bulbs",
+          "unit": "bulb",
+          "quantity": 6,
+          "attributes": { "fitting": "E27", "watts": 9 },
+          "created_at": "2026-02-14T17:45:00.000Z",
+          "last_updated": "2026-06-03T09:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "category": {
+        "id": "3a0d6c94-5f7b-4e82-a034-1c6b8e4d9f44",
+        "name": "Camping gear"
+      },
+      "items": [
+        {
+          "id": "1c24ebf8-3dca-406f-b597-c45bad4c800b",
+          "category_id": "3a0d6c94-5f7b-4e82-a034-1c6b8e4d9f44",
+          "name": "Gas canister",
+          "unit": "canister",
+          "quantity": 2,
+          "attributes": { "size": "230g" },
+          "created_at": "2026-05-30T14:10:00.000Z",
+          "last_updated": "2026-07-06T16:44:02.000Z"
+        },
+        {
+          "id": "2d35fc09-4edb-4170-c6a8-d56cbe5d910c",
+          "category_id": "3a0d6c94-5f7b-4e82-a034-1c6b8e4d9f44",
+          "name": "Two-person tent",
+          "unit": null,
+          "quantity": 1,
+          "attributes": { "model": "Hubba Hubba NX" },
+          "created_at": "2025-11-02T09:00:00.000Z",
+          "last_updated": "2025-11-02T09:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}
