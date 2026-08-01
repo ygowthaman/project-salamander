@@ -10,15 +10,15 @@ body,
    all three the mark actually uses: the lime on the body, the mid green on the
    head and tail, and the dark green on the small detail paths.
 
-   Green is the *control* colour: it is `primaryColor` in `theme.ts`, so every
-   button and interactive control already paints itself green without touching
-   these variables. They exist for the places CSS has to say it directly —
-   `--salamander-green` sets the wordmark. The light and deep steps are the two
-   ends of the same ramp, for rules and pressed states respectively.
+   Green is the *only* ramp: it is `primaryColor` in `theme.ts`, so every button
+   and interactive control already paints itself green without touching these
+   variables. They exist for the places CSS has to say it directly —
+   `--salamander-green` sets the wordmark.
 
-   Accents are the other ramp: active nav item, its underline and section
-   headers are `--salamander-orange-light` below. Fills green, accents orange —
-   that split is the point, so resist reaching across it.
+   With one hue, the roles separate by *step* rather than by colour. The light
+   lime is the accent — active nav item, its underline, section headers — and it
+   reads as "you are here" because it is brighter than the mid green the fills
+   use, not because it is a different hue. Mid is hover, deep is the pressed end.
 
    These stay in sync by hand with the `salamander` palette in `theme.ts`:
    shade 6 there is `--salamander-green`, shade 9 is `--salamander-green-deep`.
@@ -27,17 +27,6 @@ body,
   --salamander-green-light: #84bf44;
   --salamander-green: #40a04b;
   --salamander-green-deep: #1d6d33;
-
-  /* The accent ramp: active nav item, its underline, hover, section headers.
-     Same three-step shape as the greens — light for anything thin that has to
-     stay visible, mid for hover, deep for the far end. Nothing clickable is
-     filled with these; buttons are green.
-
-     These are shades 4, 6 and 8 of the `orange` palette in `theme.ts`, synced by
-     hand the same way the greens are. Change one, change the other. */
-  --salamander-orange-light: #ffa94d;
-  --salamander-orange: #fd7e14;
-  --salamander-orange-deep: #e8590c;
 }
 
 /* Watermark. One fixed layer on the body rather than a per-page element, so

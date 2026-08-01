@@ -12,18 +12,19 @@
   min-width: 0;
 }
 
-/* The accent doing its one job: naming the view you are on. Colour alone would
-   be doing it with a hue difference only, so the current item also carries a
-   rule under it. Both take the *light* orange: at 2px on a near-black header a
-   non-text indicator needs 3:1, and shade 4 clears that with room to spare
-   (~9:1) where the deeper steps of the ramp start closing on it. */
+/* The accent doing its one job: naming the view you are on. The accent shares
+   its hue with the primary now, so colour is carrying even less on its own —
+   the current item also has a rule under it, and that rule is the part doing
+   the work. Both take the *light* green: at 2px on a near-black header a
+   non-text indicator needs 3:1, and the lime clears that with room to spare
+   (~7:1) where the deeper steps of the ramp start closing on it. */
 .navLink {
   position: relative;
   padding-block: 2px;
 }
 
 .navLink[aria-current="page"] {
-  color: var(--salamander-orange-light);
+  color: var(--salamander-green-light);
 }
 
 .navLink[aria-current="page"]::after {
@@ -33,9 +34,9 @@
   bottom: -4px;
   height: 2px;
   border-radius: 2px;
-  background: var(--salamander-orange-light);
+  background: var(--salamander-green-light);
 }
 
 .navLink:not([aria-current="page"]):hover {
-  color: var(--salamander-orange);
+  color: var(--salamander-green);
 }

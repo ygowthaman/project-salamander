@@ -47,7 +47,7 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
               size="lg"
               underline="never"
               fw={active ? 600 : 500}
-              // The active colour is the secondary orange, applied in the
+              // The active colour is the light green accent, applied in the
               // stylesheet off `aria-current` so the marker and the accent
               // cannot drift.
               c={active ? undefined : "dimmed"}
@@ -63,8 +63,9 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
 
       <Group gap="xs" wrap="nowrap" ml="auto">
         <Tooltip label="Cart">
-          {/* A control, so its selected state takes the primary green rather
-              than the orange the nav links use — same rule as everywhere else.
+          {/* A control, so its selected state takes the primary green fill
+              rather than the light accent the nav links use — same rule as
+              everywhere else.
               Idle it stays grey so the header has one highlight at a time. */}
           <ActionIcon
             variant={view === "cart" ? "light" : "subtle"}
