@@ -24,7 +24,7 @@ body,
    shade 6 there is `--salamander-green`, shade 9 is `--salamander-green-deep`.
    Change one, change the other. */
 :root {
-  --salamander-green-light: #84bf44;
+  --salamander-green-light: #bfb944;
   --salamander-green: #40a04b;
   --salamander-green-deep: #1d6d33;
 }
