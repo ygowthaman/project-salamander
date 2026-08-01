@@ -14,16 +14,16 @@
 
 /* The accent doing its one job: naming the view you are on. Colour alone would
    be doing it with a hue difference only, so the current item also carries a
-   rule under it. The rule takes the *light* green rather than the deep one: at
-   2px on a near-black header the deep green lands around 2.7:1, under the 3:1
-   a non-text indicator needs, while the light green clears it comfortably. */
+   rule under it. Both take the *light* orange: at 2px on a near-black header a
+   non-text indicator needs 3:1, and shade 4 clears that with room to spare
+   (~9:1) where the deeper steps of the ramp start closing on it. */
 .navLink {
   position: relative;
   padding-block: 2px;
 }
 
 .navLink[aria-current="page"] {
-  color: var(--salamander-green-light);
+  color: var(--salamander-orange-light);
 }
 
 .navLink[aria-current="page"]::after {
@@ -33,9 +33,9 @@
   bottom: -4px;
   height: 2px;
   border-radius: 2px;
-  background: var(--salamander-green-light);
+  background: var(--salamander-orange-light);
 }
 
 .navLink:not([aria-current="page"]):hover {
-  color: var(--salamander-green);
+  color: var(--salamander-orange);
 }

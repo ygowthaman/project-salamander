@@ -26,26 +26,51 @@ const salamander: MantineColorsTuple = [
 ];
 
 /**
+ * The secondary ramp — Mantine's `orange` steps, pinned here rather than left
+ * implicit so the scale is visible next to `salamander` and `index.css` has
+ * something to document its variables against.
+ *
+ * It is the *accent*, not a fill: it names the view you are on (active nav item
+ * and its underline) and it sets section headers. Nothing clickable is painted
+ * with it — that is the primary's job — which is what keeps the two readable as
+ * different things. Shade 4 is the accent proper (`--salamander-orange-light`),
+ * shade 6 the hover (`--salamander-orange`), shade 8 the far end
+ * (`--salamander-orange-deep`) — change one of those three, change its twin in
+ * `index.css`.
+ */
+const orange: MantineColorsTuple = [
+  "#fff4e6",
+  "#ffe8cc",
+  "#ffd8a8",
+  "#ffc078",
+  "#ffa94d",
+  "#ff922b",
+  "#fd7e14",
+  "#f76707",
+  "#e8590c",
+  "#d9480f",
+];
+
+/**
  * The app's single source of visual truth. The app is locked to dark —
  * `forceColorScheme="dark"` in `main.tsx` — so dark is the case to get right.
  *
- * `primaryColor: "dark"` keeps the monochrome look the login screen already had,
- * but the shade has to invert per scheme or it disappears: Mantine's default
- * primary shade would paint a near-black button onto a near-black page. Shade 0
- * is the lightest step of the `dark` palette, so buttons read as near-white on
- * the dark background, and `autoContrast` flips their label to dark text.
+ * The two ramps split by *role*, not by importance:
  *
- * The brand green is registered as a *named* colour rather than as
- * `primaryColor`, deliberately: it is the accent — what marks the selected nav
- * item, the active cart, whatever the eye should land on — not the fill for
- * every button on the page. Components opt in with `color="salamander"`, or CSS
- * reaches for `--salamander-green`. If the product later wants green buttons
- * throughout, `primaryColor: "salamander"` is the one-line change.
+ * - `primaryColor: "salamander"` — every button and interactive control. Shade 6
+ *   is the mark's own green and the one step that holds against the near-black
+ *   page; `autoContrast` puts dark text on the fill, since white on `#40a04b`
+ *   lands near 3.4:1 and would miss 4.5:1.
+ * - `orange` — the accent, reached for deliberately (`color="orange"`, or
+ *   `--salamander-orange-light` in CSS) on nav items and headers.
+ *
+ * Keeping fills green and accents orange means "you can click this" and "you are
+ * here" never have to be told apart by hue alone.
  */
 export const theme = createTheme({
-  colors: { salamander },
-  primaryColor: "dark",
-  primaryShade: { light: 9, dark: 0 },
+  colors: { salamander, orange },
+  primaryColor: "salamander",
+  primaryShade: 6,
   autoContrast: true,
   defaultRadius: "md",
   // Loaded in `main.tsx` via @fontsource. The stack behind it is the fallback for
