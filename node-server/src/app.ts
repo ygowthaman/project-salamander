@@ -5,6 +5,7 @@ import websocket from "@fastify/websocket";
 
 import { authRoutes } from "./api/auth.js";
 import { healthRoutes } from "./api/health.js";
+import { inventoryRoutes } from "./api/inventory.js";
 import { allowedOrigins, registerAuth } from "./auth/plugin.js";
 
 /**
@@ -45,6 +46,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   await app.register(healthRoutes);
   await app.register(authRoutes);
+  await app.register(inventoryRoutes);
 
   return app;
 }
