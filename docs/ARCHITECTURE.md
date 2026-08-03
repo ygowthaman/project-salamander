@@ -482,7 +482,7 @@ one-hour cap on socket lifetime.
 | Variable | Default | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required. Read automatically by the Anthropic SDK. |
-| `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping`. |
+| `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/salaman_db`. |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS means this must name the frontend origin exactly — no wildcards. Also gates mutation `Origin` checks and the WS handshake. |
 | `PORT` | `8000` | The container image sets `8080`. |
 | `HOST` | `0.0.0.0` | |

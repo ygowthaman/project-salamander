@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
-const url = process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/shopping";
+const url = process.env.DATABASE_URL ?? "postgresql://postgres:postgres@localhost:5432/salaman_db";
 
 export default defineConfig({
   // The barrel, deliberately — not a `schema/*.ts` glob. drizzle-kit resolves

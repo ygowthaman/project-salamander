@@ -54,11 +54,11 @@ One-time setup on Ubuntu/Debian:
 ```bash
 sudo apt install -y postgresql
 sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-sudo -u postgres psql -c "CREATE DATABASE shopping;"
+sudo -u postgres psql -c "CREATE DATABASE salaman_db;"
 ```
 
 macOS: `brew install postgresql@16 && brew services start postgresql@16`, then
-create the `shopping` database and set the `postgres` password to match.
+create the `salaman_db` database and set the `postgres` password to match.
 
 The service starts on boot, so this is a one-time step. Check it's up:
 
@@ -67,7 +67,7 @@ pg_isready -h localhost -p 5432        # → localhost:5432 - accepting connecti
 ```
 
 This gives you PostgreSQL 16 on `localhost:5432` with user `postgres`,
-password `postgres`, database `shopping` — matching the `DATABASE_URL` in
+password `postgres`, database `salaman_db` — matching the `DATABASE_URL` in
 `.env.example` with no edits.
 
 ### 2. Backend
@@ -145,7 +145,7 @@ UI is the next thing to land there.
 | Variable | Default | Notes |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Unused until the interpretation layer lands; read automatically by the Anthropic SDK when it does |
-| `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/shopping` |
+| `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/salaman_db` |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS — must name the origin exactly, no wildcards |
 | `PORT` | `8000` | Cloud Run sets this automatically in production |
 | `HOST` | `0.0.0.0` | |
@@ -230,9 +230,9 @@ npm run preview      # serve the production build locally
 npm run lint
 
 # Database
-psql -h localhost -U postgres -d shopping     # password: postgres
+psql -h localhost -U postgres -d salaman_db     # password: postgres
 sudo systemctl status postgresql
-sudo -u postgres psql -c "DROP DATABASE shopping;"   # nuke and re-run migrations
+sudo -u postgres psql -c "DROP DATABASE salaman_db;"   # nuke and re-run migrations
 ```
 
 ---

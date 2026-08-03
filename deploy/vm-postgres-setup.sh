@@ -19,8 +19,8 @@ sudo apt-get install -y postgresql
 PG_CONF_DIR=$(sudo find /etc/postgresql -maxdepth 2 -name main -type d | head -1)
 
 sudo -u postgres psql -c "ALTER USER postgres PASSWORD '${PG_PASSWORD}';"
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='shopping'" \
-  | grep -q 1 || sudo -u postgres psql -c "CREATE DATABASE shopping;"
+sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='salaman_db'" \
+  | grep -q 1 || sudo -u postgres psql -c "CREATE DATABASE salaman_db;"
 
 # Listen on all interfaces (private IP only — the VM has no public IP).
 echo "listen_addresses = '*'" | sudo tee -a "${PG_CONF_DIR}/postgresql.conf" >/dev/null
@@ -32,4 +32,4 @@ echo "host all all ${SUBNET_CIDR} scram-sha-256" \
 sudo systemctl restart postgresql
 sudo systemctl enable postgresql
 
-echo "Postgres ready. DB 'shopping' on this VM's private IP:5432, open to ${SUBNET_CIDR}."
+echo "Postgres ready. DB 'salaman_db' on this VM's private IP:5432, open to ${SUBNET_CIDR}."

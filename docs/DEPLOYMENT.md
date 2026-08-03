@@ -129,7 +129,7 @@ printf '%s' "sk-ant-REPLACE_ME" | \
   gcloud secrets create anthropic-api-key --data-file=-
 
 # DATABASE_URL pointing at the VM's private IP:
-printf 'postgresql://postgres:%s@%s:5432/shopping' "$PG_PASSWORD" "$VM_IP" | \
+printf 'postgresql://postgres:%s@%s:5432/salaman_db' "$PG_PASSWORD" "$VM_IP" | \
   gcloud secrets create database-url --data-file=-
 
 # JWT signing secret (auth). Must be >= 32 chars; rotating it invalidates all
