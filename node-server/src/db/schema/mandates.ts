@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createdAt, updatedAt } from "./common.js";
-import { users } from "./auth.js";
+import { households } from "./households.js";
 import { inventoryItems } from "./inventory.js";
 
 // The reorder side. It imports inventory; inventory must never import it (D1).
@@ -24,11 +24,13 @@ export const mandates = pgTable(
   "mandates",
   {
     id: uuid("id").primaryKey().$defaultFn(randomUUID),
-    // Denormalised from the item, per the convention every user-owned table
-    // follows. Must be written from the item's owner, never from a request body.
-    userId: uuid("user_id")
+    // Denormalised from the item, per the convention every domain table
+    // follows. Must be copied from the item's household, never read from a
+    // request body — a mandate is the household's reorder rule, not the rule of
+    // whichever member happened to set it.
+    householdId: uuid("household_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => households.id, { onDelete: "cascade" }),
     inventoryItemId: uuid("inventory_item_id")
       .notNull()
       .references(() => inventoryItems.id, { onDelete: "cascade" }),
@@ -67,7 +69,7 @@ export const mandates = pgTable(
     // ONE rule per item. This is the constraint that makes a separate levels
     // table unnecessary — drop it first if a real multi-rule case ever appears.
     uniqueIndex("mandates_inventory_item_id_unique").on(t.inventoryItemId),
-    index("mandates_user_id_idx").on(t.userId),
+    index("mandates_household_id_idx").on(t.householdId),
   ],
 );
 

@@ -102,5 +102,12 @@ export function publicUser(user: User) {
     avatar_url: user.avatarUrl,
     email_verified: user.emailVerified,
     created_at: user.createdAt.toISOString(),
+    // Every user has one, always (PRD §2.2). `skip_household` is what the UI
+    // branches on: a user who was given a household silently must not be shown
+    // household features, a member list, or a name they never chose — even
+    // though the data behind them is identical to a user who created one.
+    household_id: user.householdId,
+    skip_household: user.skipHousehold,
+    role: user.role,
   };
 }

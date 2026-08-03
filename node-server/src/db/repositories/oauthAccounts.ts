@@ -49,3 +49,12 @@ export async function unlinkAccount(
     .delete(oauthAccounts)
     .where(and(eq(oauthAccounts.userId, userId), eq(oauthAccounts.provider, provider)));
 }
+
+/**
+ * Drops every provider link for a user. Used by the soft delete, where leaving
+ * one intact would let the same person sign in again and land on the retired
+ * record — see repositories/households.ts.
+ */
+export async function unlinkAll(db: DbExecutor, userId: string): Promise<void> {
+  await db.delete(oauthAccounts).where(eq(oauthAccounts.userId, userId));
+}

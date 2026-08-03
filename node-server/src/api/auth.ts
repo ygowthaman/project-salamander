@@ -22,6 +22,7 @@ import { publicUser, requireAuth } from "../auth/plugin.js";
 import { hashRefreshToken, mintRefreshToken, randomToken, signAccessToken } from "../auth/tokens.js";
 import { db } from "../db/client.js";
 import * as authSessionsRepo from "../db/repositories/authSessions.js";
+import * as householdsRepo from "../db/repositories/households.js";
 import * as oauthRepo from "../db/repositories/oauthAccounts.js";
 import * as usersRepo from "../db/repositories/users.js";
 
@@ -94,14 +95,24 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(409).send({ detail: "An account with that email already exists" });
       }
 
-      const user = await usersRepo.createUser(db, {
-        email,
-        passwordHash: await hashPassword(password),
-        displayName: display_name ?? null,
-      });
+      const passwordHash = await hashPassword(password);
+      // One transaction: an account and the household that owns its data are
+      // created together, so there is no window in which a user row exists with
+      // nothing to own. The household is auto-provisioned and `skip_household`
+      // is true — the create form is shown *after* this, on first entry, and
+      // answering it renames this row rather than making a second one
+      // (PRD §2.2.1, §2.2.4). Hashing is done outside the transaction so an
+      // argon2 pass never holds a pooled connection open.
+      const { user } = await db.transaction((tx) =>
+        householdsRepo.createUserWithHousehold(tx, {
+          email,
+          passwordHash,
+          displayName: display_name ?? null,
+        }),
+      );
 
       await issueSession(request, reply, user.id);
-      return reply.code(201).send(publicUser(user));
+      return reply.code(201).send({ ...publicUser(user), account_created: true });
     },
   );
 
@@ -195,6 +206,12 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return fail(err instanceof GoogleAuthError ? "google_auth_failed" : "internal_error");
     }
 
+    // `created` drives the household step: PRD §2.2.1 keys the create form on
+    // an account coming into existence, not on a first-login check, so signing
+    // in with Google for the tenth time asks nothing. It is reported to the SPA
+    // as a query parameter because this leg is a redirect, not a JSON reply.
+    let created = false;
+
     const userId = await db.transaction(async (tx) => {
       const existingLink = await oauthRepo.getByProviderAccount(tx, oauthRepo.GOOGLE, profile.sub);
       if (existingLink) return existingLink.userId;
@@ -222,7 +239,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         return byEmail.id;
       }
 
-      const created = await usersRepo.createUser(tx, {
+      // Same account-and-household transaction as password signup: a Google
+      // user is not quietly opted into skipping just because their route in had
+      // no form to hang the household question on.
+      const { user } = await householdsRepo.createUserWithHousehold(tx, {
         email: profile.email,
         passwordHash: null,
         displayName: profile.name,
@@ -230,17 +250,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         emailVerified: profile.emailVerified,
       });
       await oauthRepo.linkAccount(tx, {
-        userId: created.id,
+        userId: user.id,
         provider: oauthRepo.GOOGLE,
         providerAccountId: profile.sub,
       });
-      return created.id;
+      created = true;
+      return user.id;
     });
 
     if (!userId) return fail("email_not_verified");
 
     await issueSession(request, reply, userId);
-    return reply.redirect(authConfig.frontendUrl);
+    return reply.redirect(created ? `${authConfig.frontendUrl}?new_account=1` : authConfig.frontendUrl);
   });
 
   // ---- Session lifecycle --------------------------------------------------
@@ -375,9 +396,16 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ detail: 'Type DELETE to confirm' });
     }
 
-    // Cascades to oauth_accounts, auth_sessions, chat sessions and messages.
-    await usersRepo.deleteUser(db, user.id);
+    // Soft delete, so the household keeps the name against every item this
+    // person added — unless they are its last admin, in which case the
+    // household and everyone left in it go too (PRD §2.2.8). The repository
+    // owns that branch because it has to be decided inside the transaction.
+    //
+    // Not announced either way: a user who skipped does not know they have a
+    // household, and raising it here would introduce the concept purely to
+    // alarm them.
+    const outcome = await householdsRepo.deleteAccount(db, user.id);
     clearAuthCookies(reply);
-    return { ok: true };
+    return { ok: true, household_destroyed: outcome === "household_destroyed" };
   });
 };

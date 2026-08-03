@@ -28,8 +28,10 @@ export async function runMigrations(): Promise<void> {
  * is cheaper than hand-writing the catch-up DDL. It is NOT called from
  * `server.ts`; only the CLI below reaches it, only under `--reset`.
  *
- * Enum types go too. Nothing declares a `pgEnum` today, but a leftover type is
- * exactly the kind of orphan that would make a "clean" rebuild fail later.
+ * Enum types go too — `user_role` is the one that exists, and a leftover type
+ * is exactly the kind of orphan that would make a "clean" rebuild fail later:
+ * `DROP TABLE users` does not take the enum its `role` column used with it, so
+ * the replayed migration would hit `type "user_role" already exists`.
  */
 export async function resetSchema(): Promise<void> {
   await db.execute(sql`

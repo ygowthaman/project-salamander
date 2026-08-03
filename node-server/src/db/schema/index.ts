@@ -17,10 +17,31 @@
 // Do not downgrade drizzle-kit without collapsing this folder back.
 //
 // Module order below follows the dependency graph, which is acyclic and must
-// stay that way: auth <- categories <- inventory <- mandates. Drizzle's
-// `references(() => x.id)` is lazy so a cycle would survive at runtime, but TS
-// inference degrades badly and the failure is confusing. If two modules ever
-// need each other, that is a signal the tables belong together.
+// stay that way: households <- auth <- categories <- inventory <- mandates.
+// Drizzle's `references(() => x.id)` is lazy so a cycle would survive at
+// runtime, but TS inference degrades badly and the failure is confusing. If two
+// modules ever need each other, that is a signal the tables belong together.
+//
+// Two invariants sit on that order:
+//
+//   - `households.ts` imports nothing. It is the root, and an owner/creator FK
+//     back to `users` would close a cycle with `users.household_id`.
+//   - `inventory.ts` must never import `mandates.js` (decision D1) — as
+//     separate files that is greppable rather than merely written down.
+//
+// ---------------------------------------------------------------------------
+// Ownership (PRD §2.2)
+//
+// A HOUSEHOLD owns the data; a user owns only their credentials. Every domain
+// table carries `household_id`, and `users.household_id` — NOT NULL, always
+// present, auto-provisioned when the user skips the create form — is the only
+// path from a person to anything they can see. There is exactly one ownership
+// shape, so nothing downstream has to handle a lone user as a second case.
+//
+// A domain table referencing `users(id)` for scope is a bug, not a variation.
+// `oauth_accounts` and `auth_sessions` do it because they are credentials;
+// `inventory_items.added_by_user_id` and `inventory_events.actor_user_id` name
+// a user for attribution and privacy (§2.2.9), never to decide ownership.
 //
 // ---------------------------------------------------------------------------
 // Domain-wide notes (roadmap Phase 1b)
@@ -48,6 +69,7 @@
 // string round-trip and repositories need no parsing layer.
 // ---------------------------------------------------------------------------
 
+export * from "./households.js";
 export * from "./auth.js";
 export * from "./categories.js";
 export * from "./inventory.js";
