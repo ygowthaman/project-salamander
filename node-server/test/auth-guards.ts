@@ -128,6 +128,46 @@ console.log("\nauth guards");
   );
 }
 
+console.log("\nsession teardown");
+{
+  // No refresh cookie, so this never touches the database — it falls straight
+  // through to clearAuthCookies, which is the part under test.
+  const res = await app.inject({
+    method: "POST",
+    url: "/auth/logout",
+    cookies: { sal_csrf: "aaa" },
+    headers: { "x-csrf-token": "aaa", origin: "http://localhost:5173" },
+  });
+  check("logout succeeds", res.statusCode === 200, `got ${res.statusCode}`);
+
+  const cleared = (name: string) => {
+    const c = cookieFrom(res, name);
+    return c !== undefined && c.value === "";
+  };
+  check("logout clears the access cookie", cleared("sal_access"));
+  check("logout clears the refresh cookie", cleared("sal_refresh"));
+
+  // Regression: deleting this one instead of rotating it left the login form
+  // with nothing to echo, so the next sign-in attempt always 403'd.
+  const next = cookieFrom(res, "sal_csrf");
+  check("logout leaves a usable csrf cookie", Boolean(next?.value), JSON.stringify(next));
+  check("logout rotates the csrf token", next?.value !== "aaa", String(next?.value));
+
+  // And the rotated value is actually accepted on the sign-in that follows.
+  const login = await app.inject({
+    method: "POST",
+    url: "/auth/login",
+    cookies: { sal_csrf: next!.value },
+    headers: { "x-csrf-token": next!.value, origin: "http://localhost:5173" },
+    payload: { email: "not-an-email", password: "x" },
+  });
+  check(
+    "login after logout passes the csrf guard (422 from zod, not 403)",
+    login.statusCode === 422,
+    `got ${login.statusCode}`,
+  );
+}
+
 console.log("\ncors preflight");
 {
   const res = await app.inject({

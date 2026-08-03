@@ -1,5 +1,6 @@
 import type { FastifyReply } from "fastify";
 import { authConfig } from "./config.js";
+import { randomToken } from "./tokens.js";
 
 export const ACCESS_COOKIE = "sal_access";
 export const REFRESH_COOKIE = "sal_refresh";
@@ -63,7 +64,13 @@ export function clearAuthCookies(reply: FastifyReply): void {
   // Path and domain must match what was set, or the browser keeps the original.
   reply.clearCookie(ACCESS_COOKIE, { ...base, path: "/" });
   reply.clearCookie(REFRESH_COOKIE, { ...base, path: REFRESH_PATH });
-  reply.clearCookie(CSRF_COOKIE, { ...base, path: "/" });
+
+  // The CSRF cookie is rotated, not deleted. The SPA does not reload when a
+  // session ends — it swaps to the login screen in place — so deleting it would
+  // leave the login form with no token to echo, and its POST would 403 before
+  // the mint-on-first-contact hook ever got another request to run on. A fresh
+  // value still stops a pre-logout token being carried into the next session.
+  setCsrfCookie(reply, randomToken());
 }
 
 /** Short-lived holder for the OAuth `state` + PKCE verifier during the redirect. */
