@@ -143,8 +143,12 @@ Deletes:
   - `updateHousehold` — what "creating a household later" actually is (PRD §2.2.4): a rename of the row the user already has, never an insert. Nothing is ever re-parented.
   - `deletePrivateItemsFor` — every departure path runs this. Here rather than in an inventory repository because it is a membership concern; move it if the inventory module grows a reason to own it.
   - `destroyHousehold` / `deleteAccount` — the asymmetric deletion in PRD §2.2.8, with the last-admin branch decided inside the transaction. See *Deletes* above for the ordering constraint.
+  - `getMember` — one active member, scoped by household **in the query**, so an id from another household 404s without a second ownership branch a call site can forget. Every member-targeting operation goes through it.
+  - `setMemberRole` — PRD §2.3.3, refusing the demotion that would leave a household with zero admins.
+  - `removeMember` / `leaveHousehold` — PRD §2.2.10. Both wrap the same private `moveToOwnHousehold`, because removal and leaving are one operation with a different instigator. Only `leaveHousehold` has a last-admin branch: an admin is always left behind by a removal, since the API refuses self-removal.
+  - `lockHousehold` — `SELECT … FOR UPDATE` on the household row, taken first by **every** transaction that resolves the "at least one admin" invariant (`setMemberRole`, `leaveHousehold`, `removeMember`, `deleteAccount`). Counting admins and then acting on the count is not atomic on its own: two concurrent demotions of two different admins each see a count of two, each conclude it is safe, and between them leave zero. The household row is the lock object rather than the `users` rows because the membership set is what is changing. **Add this call to any new operation that reads an admin count.**
 
-  Not built here yet: **invitations**, leaving, being removed, and role changes. The first needs a table of its own (a household, an invited email, a single-use token, a 24-hour expiry) and is waiting on both the notifications module and SMTP; the other three are updates to columns that now exist, and belong with the household API when it lands.
+  Not built here yet: **invitations**. They need a table of its own (a household, an invited email, a single-use token, a 24-hour expiry) and are waiting on both the notifications module and SMTP. Leaving, removal and role changes are done, and their rules live in `../services/households.ts`.
 
 The scoping habit the deleted chat repositories established stays, one level up: every read on a domain table takes the **household id** as an argument, and there is intentionally no unscoped lookup to reach for. The auth repositories keep taking a user id, because their tables are still user-owned.
 

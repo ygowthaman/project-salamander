@@ -1,7 +1,8 @@
 import { Center, Stack, Text, Title } from "@mantine/core";
-import { IconCalendarClock, IconSettings, IconShoppingCart } from "@tabler/icons-react";
+import { IconCalendarClock, IconShoppingCart } from "@tabler/icons-react";
 import { ReactNode } from "react";
 import { InventoryPage } from "../inventory/InventoryPage";
+import { SettingsPage } from "../settings/SettingsPage";
 
 /** Every destination the header can switch the viewport to. */
 export type View = "inventory" | "schedules" | "cart" | "settings";
@@ -42,16 +43,6 @@ export function CartView() {
   );
 }
 
-export function SettingsView() {
-  return (
-    <Placeholder
-      icon={<IconSettings size={40} stroke={1.4} />}
-      title="Settings"
-      body="Account and app preferences."
-    />
-  );
-}
-
 /** Maps the active view onto the component that fills the viewport below the header. */
 export function ViewBody({ view }: { view: View }) {
   switch (view) {
@@ -62,6 +53,6 @@ export function ViewBody({ view }: { view: View }) {
     case "cart":
       return <CartView />;
     case "settings":
-      return <SettingsView />;
+      return <SettingsPage />;
   }
 }

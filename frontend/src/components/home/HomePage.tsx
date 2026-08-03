@@ -1,6 +1,7 @@
 import { AppShell } from "@mantine/core";
 import { useState } from "react";
 import { useAuth } from "../../auth/useAuth";
+import { HouseholdSetupModal } from "../household/HouseholdSetupModal";
 import { AppHeader } from "./AppHeader";
 import { View, ViewBody } from "./views";
 
@@ -13,7 +14,7 @@ import { View, ViewBody } from "./views";
  * params when one lands.
  */
 export function HomePage() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, promptHousehold, dismissHouseholdPrompt } = useAuth();
   const [view, setView] = useState<View>("inventory");
 
   return (
@@ -34,6 +35,16 @@ export function HomePage() {
       <AppShell.Main>
         <ViewBody view={view} />
       </AppShell.Main>
+
+      {/* Renders nothing until the account is brand new. Mounted here rather
+          than in the Gate so it appears over the app the user has landed in,
+          which is what makes skipping feel like dismissing an optional step
+          rather than clearing a barrier to entry. */}
+      <HouseholdSetupModal
+        opened={promptHousehold}
+        onClose={dismissHouseholdPrompt}
+        firstRun
+      />
     </AppShell>
   );
 }

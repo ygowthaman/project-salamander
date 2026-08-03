@@ -10,7 +10,6 @@ import {
   Stack,
   Text,
   Textarea,
-  Title,
 } from "@mantine/core";
 import { IconAlertTriangle, IconSparkles } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
