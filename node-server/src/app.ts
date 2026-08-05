@@ -41,8 +41,8 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   // Cookie parsing plus the global identify/CSRF hooks. Must precede the routes.
   await registerAuth(app);
 
-  // Kept with no route attached to it: the per-user push channel (roadmap
-  // Phase 1b) reuses this registration. Only the chat socket is gone.
+  // Registered with no route attached: the per-user push channel (PRD §2.5.10)
+  // is a route file rather than a dependency decision when it lands.
   await app.register(websocket);
 
   await app.register(healthRoutes);

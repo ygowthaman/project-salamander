@@ -4,10 +4,8 @@ This is the LLM layer of the backend. It is intentionally isolated from routing 
 concerns — its only job is to talk to Claude and hand back **structured, parsed data** (or a
 question to put back to the user).
 
-> **The folder is empty of code right now.** The Phase 1 chat streaming generator that used to be
-> `index.ts` — assistant persona, `text_delta` chunks — was deleted with the rest of the chat app,
-> and it was deleted rather than refactored on purpose. Everything below specifies what gets
-> written here instead, starting with the inventory interpreter (`PRD.md` §2.5.5–§2.5.7).
+> **The folder is empty of code right now.** Everything below specifies what gets written here,
+> starting with the inventory interpreter (`PRD.md` §2.5.5–§2.5.7).
 
 ## The model is an interpreter, not an assistant
 
@@ -44,8 +42,8 @@ over-fired: it conflated two different things, and PRD §2.5.7 needs one of them
 | Non-streaming, awaited whole | Token streaming |
 
 The exchange is **capped at ten and ephemeral** (PRD §2.5.7): it is not stored, not resumable, and
-does not survive a reload. If you are reaching for a table to hold it, that is the chat app coming
-back — the cap and the ephemerality are what keep this an interpretation step rather than a chat.
+does not survive a reload. If you are reaching for a table to hold it, you are building a chat app
+— the cap and the ephemerality are what keep this an interpretation step rather than a chat.
 
 ## The shape of a call
 

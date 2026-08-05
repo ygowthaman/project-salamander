@@ -1,7 +1,7 @@
 # Auth Context
 
 This folder owns identity: who the caller is, and whether they may act. It knows
-nothing about chat, sessions or the agent — routes import from here, never the
+nothing about the domain or the agent — routes import from here, never the
 reverse.
 
 ## Divergence from the PRD

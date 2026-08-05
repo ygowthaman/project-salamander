@@ -19,17 +19,14 @@ for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
 > **Current state: accounts, and not much else yet.** Sign in with Google or with
 > email + password — JWT session cookies with CSRF, auth enforced on every route
 > (roadmap Phase 1a) — on a foundation of Fastify, Postgres/Drizzle with startup
-> migrations. The Phase 1 chat app that used to sit on top of this **has been
-> removed** ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat
-> app*); the interpreter model above is the *target*, and inventory is the next
-> thing to land.
+> migrations. The interpreter model above is the *target*, and inventory is the
+> next thing to land.
 
 | Piece | Stack | Local URL |
 |---|---|---|
 | `frontend/` | React + Vite + TypeScript | http://localhost:5173 |
 | `node-server/` | Node 20 + TypeScript + Fastify + Drizzle | http://localhost:8000 |
 | PostgreSQL 16 | installed natively | localhost:5432 |
-| `py-server/` | Legacy Python/FastAPI backend — superseded, kept for reference | — |
 
 ---
 
@@ -83,11 +80,10 @@ Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it ap
 any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`
 and `auth_sessions` tables on the first run.
 
-> **The chat migrations are destructive, by design.** On an existing database,
-> `0001_auth_users_oauth.sql` deletes the pre-auth chat sessions (anonymous rows
-> with no owner for its new `NOT NULL user_id`) and `0002_drop_chat.sql` then
-> drops the `sessions` and `messages` tables outright. Any local chat history
-> disappears on the next boot.
+> **One migration is destructive, and only on an old database.**
+> `0001_drop_legacy_chat_tables.sql` drops the `sessions` and `messages` tables
+> left behind by the retired Python backend. Nothing in this schema creates them,
+> so on a database provisioned from this migration chain it does nothing.
 
 **Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
@@ -132,9 +128,9 @@ Open **http://localhost:5173**.
 You get the login screen, and a placeholder shell once signed in — the inventory
 UI is the next thing to land there.
 
-> `VITE_WS_URL` is currently unused: the chat socket is gone and the per-user push
-> channel that replaces it has not been built. Set it correctly anyway, or the
-> first thing that opens a socket will inherit a stale default.
+> `VITE_WS_URL` is currently unused: the per-user push channel has not been built
+> yet. Set it correctly anyway, or the first thing that opens a socket will
+> inherit a stale default.
 
 ---
 
@@ -155,9 +151,7 @@ UI is the next thing to land there.
 | `COOKIE_DOMAIN` | *(empty)* | Leave empty locally. In production, the shared registrable domain so one cookie covers the app and API hosts |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(empty)* | Optional — blank means email + password only, with `/auth/google` returning 503 |
 
-`DATABASE_URL` takes a plain `postgresql://` scheme. The old
-`postgresql+asyncpg://` form was SQLAlchemy-specific; the server strips the suffix
-if it finds one, but new config should not include it.
+`DATABASE_URL` takes a plain `postgresql://` scheme, with no dialect suffix.
 
 ### `frontend/.env`
 
@@ -188,9 +182,7 @@ rate-limited. The design reasoning is in
 **`GET /health`** — `{ "status": "ok" }`. Unauthenticated and database-free: it
 reports that the process is serving, not that Postgres is reachable.
 
-That is the whole surface. The chat endpoints (`POST /sessions`,
-`GET /sessions/{id}/history`, `WS /ws/{session_id}`) and their tables are gone —
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) → *Removing the chat app*.
+That is the whole surface.
 
 ### Next
 
@@ -262,18 +254,17 @@ gcloud run deploy salamander-server --source . \
 
 Session affinity is best-effort — a scale-down still cuts live sockets, and the
 frontend has no reconnect logic (see `docs/ARCHITECTURE.md` → *Known gaps*). That
-matters less for the push channel than it did for the chat socket: because the
-channel is an optimization rather than the source of truth, a dropped socket
-leaves the UI stale until the next fetch rather than losing a response
-mid-sentence.
+matters less than it looks: because the channel is an optimization rather than
+the source of truth, a dropped socket leaves the UI stale until the next fetch
+rather than losing anything.
 
 ---
 
 ## Troubleshooting
 
-**Signed in, but the app looks empty.** That is the current state — the chat UI
-was removed and the inventory UI has not landed. `GET /health` and the `/auth/*`
-routes are the whole backend surface.
+**Signed in, but the app looks empty.** That is the current state — the inventory
+UI has not landed. `GET /health` and the `/auth/*` routes are the whole backend
+surface.
 
 **Backend exits with `DATABASE_URL is not set`.** You skipped
 `cp .env.example .env`, or you're running from the repo root instead of
@@ -298,7 +289,6 @@ Node 20 to regenerate migrations.
 project-salamander/
 ├── node-server/    backend — see src/{db,api,agent}/*_CONTEXT.md for design notes
 ├── frontend/       React SPA (login + a placeholder signed-in shell)
-├── py-server/      legacy Python backend, superseded by node-server
 └── docs/
     ├── ARCHITECTURE.md   architecture, data model, runtime flows, deployment
     ├── PRD.md            product spec for the shopping agent

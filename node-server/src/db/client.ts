@@ -7,11 +7,7 @@ if (!url) {
   throw new Error("DATABASE_URL is not set");
 }
 
-// SQLAlchemy required a `postgresql+asyncpg://` dialect suffix; `pg` does not
-// understand it. Strip it so an old .env keeps working.
-const connectionString = url.replace(/^postgresql\+\w+:\/\//, "postgresql://");
-
-export const pool = new pg.Pool({ connectionString });
+export const pool = new pg.Pool({ connectionString: url });
 
 export const db = drizzle(pool, { schema });
 

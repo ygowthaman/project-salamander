@@ -8,6 +8,13 @@
       "when": 1785794260207,
       "tag": "0000_nasty_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785963485547,
+      "tag": "0001_drop_legacy_chat_tables",
+      "breakpoints": true
     }
   ]
 }

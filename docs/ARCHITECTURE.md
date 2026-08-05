@@ -319,9 +319,6 @@ same repository function run inside or outside a transaction, which the
 interpret-and-commit flow relies on to write a row and its audit event
 atomically.
 
-`DATABASE_URL` is normalized in `client.ts`: a `postgresql+asyncpg://` scheme is
-rewritten to plain `postgresql://`, so a stale `.env` keeps working.
-
 ---
 
 ## Data model

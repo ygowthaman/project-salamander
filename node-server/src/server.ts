@@ -18,7 +18,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 }
 
 try {
-  // Replaces SQLAlchemy's create_all-on-startup with real migrations.
+  // Versioned migrations, not create-tables-on-boot: this can alter existing
+  // tables, which is the whole reason it runs before `listen`.
   await runMigrations();
   await app.listen({ port: PORT, host: HOST });
 } catch (err) {

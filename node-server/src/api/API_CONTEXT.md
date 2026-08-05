@@ -13,16 +13,15 @@ shapes the output explicitly.
 
 - **health.ts** — `GET /health`. Unauthenticated and database-free on purpose: it reports that the process is serving, not that Postgres is reachable.
 
-> **Only those two exist today.** The chat routes (`sessions.ts`, and the token-streaming
-> `websocket.ts`) have been removed. There is no chat route and no streaming endpoint, and none is
-> coming back — the sections below describe the surface that replaces them, starting with
-> `categories.ts` and `inventory.ts` in roadmap Phase 1b.
+> **Only those two exist today**, alongside `households.ts` and the 501 stubs in `inventory.ts`.
+> There is no chat route and no streaming endpoint, and none is coming — the sections below
+> describe the surface being built, starting with `categories.ts` and the inventory service.
 
 ## Authentication and ownership
 
 Every route here requires a signed-in user via the `requireAuth` preHandler. The owner of a new row comes from `request.user`, never from the request body — this is the `user_id` invariant, enforced at the one place that can enforce it.
 
-Reads are scoped by owner in the repository itself — write no unscoped `getX`, only `getXForUser` — so a route cannot accidentally return another user's row. A row that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists. The deleted chat routes established both habits; domain routes inherit them verbatim.
+Reads are scoped by owner in the repository itself — write no unscoped `getX`, only `getXForUser` — so a route cannot accidentally return another user's row. A row that does not exist and one belonging to someone else both produce **404, never 403**: a 403 would confirm the id exists.
 
 The push channel authenticates at the **handshake** (the cookie rides the upgrade request) and must validate `Origin` there too, because CORS does not apply to WebSockets. Ownership is re-checked per push rather than trusted from connect time: a socket outlives the 15-minute access token, and the account may be deleted mid-connection.
 
@@ -80,8 +79,8 @@ works inside or outside a transaction — see `../db/DB_CONTEXT.md`.
 
 ## The WebSocket push channel
 
-One socket per authenticated user, running in the opposite direction from the chat socket it
-replaces. **Not built yet** — it arrives with the first pushed row change. The
+One socket per authenticated user, server→client only. **Not built yet** — it arrives with the
+first pushed row change. The
 `@fastify/websocket` plugin is deliberately still registered in `app.ts` with no route attached, so
 standing it up is a route file, not a dependency decision:
 

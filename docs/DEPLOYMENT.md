@@ -194,10 +194,10 @@ export BACKEND_URL=$(gcloud run services describe salamander-server \
   --region="$REGION" --format='value(status.url)')
 echo "$BACKEND_URL"
 
-# Smoke test (today's chat app; becomes `curl -s "$BACKEND_URL/health"` once the
-# chat surface is removed — see ARCHITECTURE.md → Removing the chat app):
-curl -sX POST "$BACKEND_URL/sessions" -H 'Content-Type: application/json' -d '{}'
-# → {"id":"...","title":"New Session","created_at":"..."}
+# Smoke test — unauthenticated and database-free, so it reports that the process
+# is serving rather than that Postgres is reachable:
+curl -s "$BACKEND_URL/health"
+# → {"status":"ok"}
 ```
 
 ## 6. Deploy the frontend (Firebase Hosting)

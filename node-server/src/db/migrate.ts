@@ -58,7 +58,7 @@ export async function resetSchema(): Promise<void> {
 /** `host/database` from DATABASE_URL, for the pre-drop log line. */
 function targetLabel(): string {
   try {
-    const u = new URL(process.env.DATABASE_URL!.replace(/^postgresql\+\w+:\/\//, "postgresql://"));
+    const u = new URL(process.env.DATABASE_URL!);
     return `${u.hostname}${u.port ? `:${u.port}` : ""}${u.pathname}`;
   } catch {
     return "(unparseable DATABASE_URL)";

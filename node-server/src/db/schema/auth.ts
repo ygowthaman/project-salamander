@@ -32,8 +32,8 @@ import { households } from "./households.js";
 // user has one household.
 export const userRole = pgEnum("user_role", ["admin", "user"]);
 
-// UUIDs are app-generated (crypto.randomUUID), matching the previous Python
-// implementation's `default=uuid.uuid4` rather than a DB-side gen_random_uuid().
+// UUIDs are app-generated (crypto.randomUUID) rather than DB-side
+// gen_random_uuid(), so no `pgcrypto` extension is required.
 // Household auto-provisioning depends on it: the household id is known before
 // either row is written, so the account and its household are one INSERT pair
 // in one transaction, with no nullable-then-backfill window.

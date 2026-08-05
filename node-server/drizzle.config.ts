@@ -11,7 +11,5 @@ export default defineConfig({
   schema: "./src/db/schema/index.ts",
   out: "./drizzle",
   dialect: "postgresql",
-  dbCredentials: {
-    url: url.replace(/^postgresql\+\w+:\/\//, "postgresql://"),
-  },
+  dbCredentials: { url },
 });
