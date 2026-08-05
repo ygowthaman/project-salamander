@@ -129,7 +129,7 @@ Three consequences worth stating up front, because they recur in every layer:
 | Real-time | WebSockets (`@fastify/websocket`) — server→client push only |
 | Auth | Google OAuth 2.0 (OIDC + PKCE) and email + password (argon2id); JWT access cookie via `jose` |
 | Database | PostgreSQL 16 + Drizzle ORM over `pg` (node-postgres) |
-| Migrations | `drizzle-kit` — versioned SQL applied on server startup |
+| Migrations | `drizzle-kit` — generated SQL applied on server startup (rebuilt from scratch each schema edit, for now) |
 | Validation | zod — at the HTTP boundary *and* on every LLM response |
 | Local dev DB | Local PostgreSQL 16 |
 | Deployment | Google Cloud Platform — see [Deployment](#deployment) |
@@ -213,6 +213,7 @@ node-server/src/
     │   ├── inventory.ts     inventory_items + inventory_events
     │   └── mandates.ts      The reorder opt-in (imports inventory, never the reverse)
     ├── migrate.ts         Startup migration runner (also `npm run db:migrate`)
+    ├── reset-migrations.ts  Clears drizzle/ so db:generate writes a fresh baseline
     └── repositories/      Query logic, one module per table
         ├── users.ts          Query logic for the users table
         ├── oauthAccounts.ts  Provider identity links
@@ -426,11 +427,17 @@ The conventions these tables set, which any new table should follow:
   groups by it, and drift there never leaves the row.
 
 Schema lives in `db/schema/`; the generated SQL lives in `node-server/drizzle/`.
-Migrations are versioned files applied by `migrate.ts` on startup — replacing any
-"create tables on boot" approach, which can create missing tables but can never
-alter existing ones. After editing a schema module, run `npm run db:generate` and
-commit the generated SQL; never hand-edit a migration that has already been
-applied anywhere.
+Migrations are files applied by `migrate.ts` on startup — replacing any "create
+tables on boot" approach, which can create missing tables but can never alter
+existing ones.
+
+**During the current dev cycle the migration chain is rebuilt, not extended.**
+`npm run db:generate` deletes `drizzle/` and regenerates a single baseline from
+`schema/`; `npm run db:migrate` drops every table and replays it; `npm run
+db:reset` runs both, which is the normal response to a schema edit. Nothing is
+hand-edited and nothing is caught up, because no database holds data worth
+keeping — the moment one does, the chain freezes and diffs get appended again.
+See `node-server/src/db/DB_CONTEXT.md` for what that switch involves.
 
 > **Requires `drizzle-kit` >= 0.31.** Older versions load the schema through CJS
 > `require`, which cannot resolve the `./auth.js` specifiers NodeNext ESM obliges
@@ -735,9 +742,10 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
   than function.
 - **App-generated UUIDs** — no `pgcrypto` dependency, and the ID exists before the
   insert round-trips.
-- **Explicit migrations over sync-on-startup** — `drizzle-kit` produces versioned
-  SQL applied at boot, which can alter existing tables, not just create missing
-  ones.
+- **Explicit migrations over sync-on-startup** — `drizzle-kit` produces SQL applied
+  at boot, which can alter existing tables, not just create missing ones. The chain
+  is rebuilt from scratch on each schema edit for now; versioning starts when a
+  database first holds data worth keeping.
 - **Auth cookies over bearer tokens** — httpOnly removes the XSS token-theft
   class, and the cookie rides the WebSocket upgrade automatically (a browser
   cannot set headers on `new WebSocket()`). The cost is that the API must share a

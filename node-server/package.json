@@ -12,9 +12,10 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx test/auth-guards.ts",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "tsx src/db/reset-migrations.ts && drizzle-kit generate --name init",
     "db:migrate": "tsx src/db/migrate.ts --reset",
-    "db:migrate:preserve": "tsx src/db/migrate.ts"
+    "db:migrate:preserve": "tsx src/db/migrate.ts",
+    "db:reset": "npm run db:generate && npm run db:migrate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",

@@ -210,9 +210,10 @@ npm run dev          # hot-reloading dev server on :8000
 npm run typecheck    # tsc --noEmit
 npm run build        # compile to dist/
 npm start            # run the compiled build
-npm run db:migrate   # DEV: drop every table, then replay all migrations
+npm run db:reset     # DEV: rebuild drizzle/ from schema/, then rebuild the database
+npm run db:generate  # wipe drizzle/ and regenerate one baseline from src/db/schema/
+npm run db:migrate   # DEV: drop every table, then replay that baseline
 npm run db:migrate:preserve  # apply pending migrations without dropping anything
-npm run db:generate  # regenerate drizzle/ after editing src/db/schema.ts
 
 # Frontend
 cd frontend
@@ -224,7 +225,7 @@ npm run lint
 # Database
 psql -h localhost -U postgres -d salaman_db     # password: postgres
 sudo systemctl status postgresql
-sudo -u postgres psql -c "DROP DATABASE salaman_db;"   # nuke and re-run migrations
+sudo -u postgres psql -c "DROP DATABASE salaman_db;"   # rarely needed — db:reset already wipes
 ```
 
 ---
