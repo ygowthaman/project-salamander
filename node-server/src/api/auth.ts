@@ -397,9 +397,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     }
 
     // Soft delete, so the household keeps the name against every item this
-    // person added — unless they are its last admin, in which case the
-    // household and everyone left in it go too (PRD §2.2.8). The repository
-    // owns that branch because it has to be decided inside the transaction.
+    // person added. If they are its last admin the household is dissolved with
+    // them — its inventory and records destroyed, everyone still in it re-homed
+    // with their account intact (PRD §2.2.8). The repository owns that branch
+    // because it has to be decided inside the transaction.
     //
     // Not announced either way: a user who skipped does not know they have a
     // household, and raising it here would introduce the concept purely to

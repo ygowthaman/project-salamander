@@ -16,7 +16,7 @@ import { getHousehold, updateHousehold } from "../../api/households";
 import { useAuth } from "../../auth/useAuth";
 import { HouseholdDetail } from "../../types";
 import { HouseholdSetupModal } from "../household/HouseholdSetupModal";
-import { HouseholdDangerZone } from "./HouseholdDangerZone";
+import { HouseholdDangerZone, type DepartureKind } from "./HouseholdDangerZone";
 import { HouseholdMembers } from "./HouseholdMembers";
 
 /**
@@ -43,12 +43,12 @@ export function HouseholdSettings() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   /**
-   * Set once a departure completes. Leaving flips `skip_household` back to true,
-   * so this section immediately re-renders as the create prompt — which on its
-   * own would look like the household simply vanished. This is what says
-   * otherwise.
+   * Set once a departure completes — leaving, or deleting the household outright.
+   * Both flip `skip_household` back to true, so this section immediately
+   * re-renders as the create prompt, which on its own would look like the
+   * household simply vanished. This is what says otherwise.
    */
-  const [departure, setDeparture] = useState<{ from: string; destroyed: boolean } | null>(null);
+  const [departure, setDeparture] = useState<{ from: string; kind: DepartureKind } | null>(null);
 
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
@@ -121,10 +121,11 @@ export function HouseholdSettings() {
             simply an individual user again, starting empty. */}
         {departure && (
           <Alert color="green" variant="light" icon={<IconCheck size={18} />} role="status">
-            You have left {departure.from}
-            {departure.destroyed
-              ? ", and because you were its last admin it was deleted along with everything in it."
-              : ". Everything you added stays with it."}{" "}
+            {departure.kind === "deleted"
+              ? `You have deleted ${departure.from} and everything it was tracking. Everyone who was in it keeps their account.`
+              : departure.kind === "left-dissolved"
+                ? `You have left ${departure.from}, and because you were its last admin it was deleted along with everything in it.`
+                : `You have left ${departure.from}. Everything you added stays with it.`}{" "}
             You are starting fresh with an empty inventory.
           </Alert>
         )}
@@ -234,7 +235,7 @@ export function HouseholdSettings() {
           this for everyone" without saying so. */}
       <HouseholdDangerZone
         detail={detail}
-        onLeft={(destroyed) => setDeparture({ from: detail.name, destroyed })}
+        onDeparted={(kind) => setDeparture({ from: detail.name, kind })}
       />
     </Stack>
   );

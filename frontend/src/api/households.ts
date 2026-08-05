@@ -86,14 +86,20 @@ export async function leaveHousehold(): Promise<{
 }
 
 /**
- * Deletes the household and everything it owns. Admin only.
+ * Deletes the household and everything it owns — its inventory, its categories,
+ * its records. Admin only.
  *
- * This destroys **every member's account, including the caller's own**, so the
- * session it was made with is dead when it returns — the server clears the auth
- * cookies on the way out, and the caller must drop local auth state too.
+ * **No account is deleted, the caller's least of all.** Everyone in the
+ * household keeps their sign-in and is re-homed into a silent household of their
+ * own, so this is destroying a shared thing rather than evicting the people who
+ * shared it. The session survives; the caller stays signed in.
+ *
+ * The returned user carries the new `household_id`, `role` and `skip_household`
+ * — apply it, exactly as after a leave, or the app keeps rendering a household
+ * that no longer exists.
  */
-export async function deleteHousehold(): Promise<void> {
-  await apiFetch<{ ok: boolean }>("/household", { method: "DELETE" });
+export async function deleteHousehold(): Promise<{ user: User }> {
+  return apiFetch("/household", { method: "DELETE" });
 }
 
 /**

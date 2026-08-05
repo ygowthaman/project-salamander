@@ -1,5 +1,5 @@
 {
-  "id": "c89122c1-f8d5-4fea-8cc7-ff35e22e635a",
+  "id": "1ca6ff50-3bf9-4bc1-b70d-c45c0624f418",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -500,7 +500,7 @@
           "name": "added_by_user_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "is_private": {
           "name": "is_private",
@@ -632,7 +632,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         }
       },

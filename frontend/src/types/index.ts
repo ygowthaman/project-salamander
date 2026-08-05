@@ -49,8 +49,10 @@ export interface HouseholdDetail extends Household {
   skip_household: boolean;
   /**
    * True when the caller is the only admin, so leaving — or deleting their
-   * account — would destroy the household and every other member's account with
-   * it. What the UI warns on before either action.
+   * account — would dissolve the household and destroy everything it was
+   * tracking. Nobody's account goes with it: every other member keeps their
+   * sign-in and starts fresh on their own. What the UI warns on before either
+   * action.
    */
   is_last_admin: boolean;
 }

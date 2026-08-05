@@ -71,9 +71,10 @@ export interface HouseholdSummary {
   adminCount: number;
   /**
    * Whether leaving or deleting this account would take the household with it
-   * (PRD §2.2.8, §2.2.10). Surfaced so the UI can warn a departing admin
-   * *before* they act — the leave itself is unconditional, because the PRD asks
-   * for a warning rather than a second confirmation on the wire.
+   * (PRD §2.2.8, §2.2.10) — its inventory and its records, though not anyone's
+   * account. Surfaced so the UI can warn a departing admin *before* they act —
+   * the leave itself is unconditional, because the PRD asks for a warning rather
+   * than a second confirmation on the wire.
    */
   isLastAdmin: boolean;
 }
@@ -238,8 +239,9 @@ export async function removeMember(actor: User, userId: string): Promise<User> {
  *
  * They keep their account and their identity, and land in a new household of
  * their own, back in the state of a user who skipped the household step. If they
- * were the last admin the household they left is destroyed behind them, along
- * with the accounts of everyone still in it.
+ * were the last admin the household they left is dissolved behind them and its
+ * inventory destroyed — everyone still in it keeps their account and is re-homed
+ * the same way the leaver was.
  *
  * **No confirmation is required on the wire, and that is the PRD's choice, not
  * an omission.** The departing admin is to be *warned* — told that leaving will
@@ -259,22 +261,42 @@ export async function leaveHousehold(actor: User): Promise<householdsRepo.Depart
  * Deletes the household and everything it owns (PRD §2.2.8) — an `admin` action,
  * and the only operation in the product that genuinely destroys data.
  *
- * It takes the inventory, the records, **and the users** — including the caller's
- * own account and the accounts of every other member. Membership and role are
- * both required, which is what taking the household id from the actor rather
- * than from the request guarantees: the check is always "admin *of this
- * household*", never "is an admin".
+ * It takes the inventory, the categories and the records. **It does not take
+ * anyone's account** — not the caller's and not any other member's. Everyone in
+ * it keeps their sign-in and lands in a silent household of their own, exactly
+ * as a departing member does (§2.2.10). Deleting a household is destroying a
+ * shared thing, not evicting the people who shared it.
+ *
+ * Membership and role are both required, which is what taking the household id
+ * from the actor rather than from the request guarantees: the check is always
+ * "admin *of this household*", never "is an admin".
+ *
+ * The caller's re-homed row comes back so the boundary can hand it to the SPA.
+ * Their session stays valid — the account behind it is untouched — but it now
+ * resolves to a different household, and a client still holding the old user
+ * would render a household that no longer exists.
  *
  * No extra confirmation beyond the ordinary one the UI puts on a destructive
  * button. Notably, a user who skipped the household step is not warned that a
  * household is going with them — they do not know they have one, and raising it
  * at the moment of deletion would introduce the concept purely to alarm them.
  */
-export async function deleteHousehold(actor: User): Promise<void> {
+export async function deleteHousehold(actor: User): Promise<User> {
   requireAdmin(actor);
 
-  // Wrapped here rather than in the repository because `destroyHousehold` is two
-  // statements — members, then the household row — and a failure between them
-  // would leave a household nobody is in and nothing can reach.
-  await db.transaction((tx) => householdsRepo.destroyHousehold(tx, actor.householdId));
+  // One transaction because `destroyHousehold` is a sequence — inventory, then
+  // every member onto a new household, then the row — and a failure part way
+  // through would leave members scattered out of a household that still exists.
+  return db.transaction(async (tx) => {
+    await householdsRepo.destroyHousehold(tx, actor.householdId);
+
+    // Re-read rather than returned from the teardown: it re-homes every occupant
+    // and has no reason to single one out, and this is the only caller that
+    // cares which row was the caller's.
+    const user = await usersRepo.getUserById(tx, actor.id);
+    if (!user) {
+      throw new HouseholdError(404, "Household not found");
+    }
+    return user;
+  });
 }

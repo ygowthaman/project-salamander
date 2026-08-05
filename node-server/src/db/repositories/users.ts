@@ -129,9 +129,11 @@ export async function updateUser(db: DbExecutor, id: string, patch: UserPatch): 
  * is replaced with a tombstone so the real address is free to register again
  * the moment this completes, producing a *new*, unrelated account.
  *
- * Not to be called directly by a route: the household side has to decide first
- * whether this member is the last admin, in which case the whole household goes
- * instead. See `households.ts` → `deleteAccount`.
+ * This is how *every* account deletion ends — there is no hard delete of a user
+ * anywhere in the product. Not to be called directly by a route, though: the
+ * household side has to decide first whether this member is its last admin, in
+ * which case the household is dissolved around them on the way through. See
+ * `households.ts` → `deleteAccount`.
  */
 export async function softDeleteUser(db: DbExecutor, id: string): Promise<void> {
   await db
@@ -145,16 +147,4 @@ export async function softDeleteUser(db: DbExecutor, id: string): Promise<void> 
       updatedAt: new Date(),
     })
     .where(eq(users.id, id));
-}
-
-/**
- * Hard delete. Cascades to oauth_accounts and auth_sessions, and nulls this
- * user out of the attribution columns on inventory rows.
- *
- * Reachable only from the household teardown in `households.ts`: PRD §2.2.8
- * makes the household the sole operation that genuinely destroys a person's
- * record, and an ordinary account deletion is `softDeleteUser` above.
- */
-export async function deleteUser(db: DbExecutor, id: string): Promise<void> {
-  await db.delete(users).where(eq(users.id, id));
 }

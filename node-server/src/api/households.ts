@@ -1,6 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { clearAuthCookies } from "../auth/cookies.js";
 import { publicUser, requireAuth } from "../auth/plugin.js";
 import type { Household, User } from "../db/schema/index.js";
 import { HouseholdError } from "../services/households.js";
@@ -118,7 +117,9 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
       role: request.user!.role,
       skip_household: request.user!.skipHousehold,
       // What the UI needs to warn a departing admin that leaving — or deleting
-      // their account — takes the household and everyone in it (§2.2.10).
+      // their account — dissolves the household and destroys its inventory
+      // (§2.2.10). Nobody's account goes with it; everyone still in it is
+      // re-homed.
       is_last_admin: summary.isLastAdmin,
     };
   });
@@ -165,17 +166,21 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Deletes the household, its data, and every member's account including the
-   * caller's own (§2.2.8). `admin` only.
+   * Deletes the household and its data (§2.2.8). `admin` only.
    *
-   * The cookies go with it: the account behind this session no longer exists, so
-   * leaving them in place would send the SPA into a refresh loop against a user
-   * id that resolves to nothing.
+   * **No account is deleted, including the caller's own.** Every member keeps
+   * their sign-in and is re-homed into a silent household of their own, so the
+   * session that made this request is still valid afterwards — the cookies stay
+   * exactly where they are.
+   *
+   * The response carries the caller's re-homed user for the same reason
+   * `POST /household/leave` does: `household_id`, `role` and `skip_household`
+   * have all changed, and a client that keeps the old one renders a household
+   * that no longer exists.
    */
-  app.delete("/household", async (request, reply) => {
-    await households.deleteHousehold(request.user!);
-    clearAuthCookies(reply);
-    return { ok: true };
+  app.delete("/household", async (request) => {
+    const user = await households.deleteHousehold(request.user!);
+    return { ok: true, user: publicUser(user) };
   });
 
   // ---- Members -------------------------------------------------------------

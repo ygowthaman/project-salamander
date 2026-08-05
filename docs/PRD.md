@@ -63,7 +63,7 @@ Nothing in the product should assume a user has a password. A password-less acco
 - **Display name** — freely.
 - **Email address** — freely, provided the new address is not already taken. Changing it marks the address unverified again, because the new one has not been proven.
 - **Password** — set it (if they have none) or change it (proving the current one first). Changing a password signs the user out everywhere except the device that made the change; see §2.4. A user who has forgotten their password resets it instead — §2.4.6.
-- **Delete their account.** Deleting a user is a **soft delete** — the account is retired, but the record remains. It has to: inventory items record which member added them (§2.2.9), and hard-deleting the person would destroy or orphan that history for everyone else in the household. Because a password-less account has no password to re-enter as proof of intent, deletion requires an explicit typed confirmation instead. Deleting a *household* is the operation that genuinely destroys data, including its users. The exception to the soft delete is the **last admin** of a household: their account deletion takes the household and everyone left in it with them — see §2.2.8.
+- **Delete their account.** Deleting a user is a **soft delete** — the account is retired, but the record remains. It has to: inventory items record which member added them (§2.2.9), and hard-deleting the person would destroy or orphan that history for everyone else in the household. Because a password-less account has no password to re-enter as proof of intent, deletion requires an explicit typed confirmation instead. Deleting a *household* is the operation that genuinely destroys data — but what it destroys is what the household owned, never the people in it: no account is deleted by it, and the same is true when the **last admin** of a household deletes their own account and takes the household with them. See §2.2.8.
 
 ### 2.2 Households
 
@@ -177,11 +177,15 @@ Precisely what a soft delete does:
 
 Registering again with a released address produces a **new account**, not the old one revived. It has its own identity, its own household (§2.2.1), and no connection to the attribution the previous record still carries. Two people sharing an email address over time are two unrelated users, and the product never claims otherwise.
 
-**Deleting a household is a hard delete, and it is total.** It removes the household and everything the household owns — its inventory, its records, *and its users*. This is the only operation in the product that genuinely destroys data.
+**Deleting a household is a hard delete, and it is total — but it is total about the household, not about the people in it.** It removes the household and everything the household owns: its inventory, its categories, its records. This is the only operation in the product that genuinely destroys data.
+
+**No account is deleted by it.** Every member keeps their account, their credentials and their identity, and lands in a household of their own exactly as a departing member does (§2.2.10) — `skipHousehold` back to true, provisioned silently, starting empty. That includes the admin who asked for the deletion: they stay signed in, and their session simply resolves to the new household on the next request.
+
+The reason is that a household is a shared thing, and destroying a shared thing is not grounds for destroying the people who shared it. A member who joined a household to keep track of the shampoo has not consented to their account being at the disposal of whoever else holds `admin` — and an admin who wants to stop using a household should not have to decide whether everyone else deserves to keep their sign-in. Those are separate questions, so they are separate operations: an account is only ever deleted by the person who owns it (§2.1).
 
 **Who may delete a household: any member of that household holding the `admin` role** (§2.3). Membership and role are both required — an admin of one household has no authority over another, so the check is always "admin *of this household*", never "is an admin".
 
-**When the last admin deletes their account, the household is deleted with them.** Because every household must always have at least one admin (§2.3.3), an account deletion that would leave none is treated as a deletion of the whole household: the household is destroyed, and **every remaining member's account is destroyed along with it** — the full hard delete described above, not a soft delete.
+**When the last admin deletes their account, the household is deleted with them.** Because every household must always have at least one admin (§2.3.3), an account deletion that would leave none is treated as a deletion of the whole household: the household and everything it owned are destroyed, exactly as above. **Every remaining member keeps their account** and is re-homed, exactly as above. The person deleting their account is soft-deleted like anyone else — the household's fate does not change what happens to the person who asked.
 
 There is **no delegation**. The role does not pass to another member, the deletion is not refused, and nobody is prompted to hand it over first. The admin is assumed to know what they are doing and to be accountable for it; this is an admin-level change, and its consequences are theirs.
 
@@ -195,6 +199,8 @@ They differ only in that the first person never knew they had a household.
 **A household is also destroyed when its last admin leaves** rather than deletes their account (§2.2.10). That is the same hard delete described here, with one difference: the departing admin is warned first.
 
 **No extra confirmation is required for any of this.** Deleting a household uses the ordinary confirmation, and a user who skipped is not warned that a household is going with them — they do not know they have one, and raising it at the moment of deletion would introduce the concept purely to alarm them.
+
+**Taken together, these two rules mean no user record is ever hard-deleted.** Deleting an account retires it and keeps the row; deleting a household does not touch accounts at all. A person is therefore always available to be named as the member who added something, which is what lets attribution be mandatory on every inventory item (§2.5.1) rather than a reference that may or may not still resolve.
 
 #### 2.2.9 Attribution and private items
 
@@ -232,9 +238,9 @@ The reason is that the alternative is unworkable in a shared home: deciding whic
 
 Because they are the only member of that new household, they are its `admin` (§2.3.2).
 
-**When the last admin leaves, the household they leave is deleted.** Every household must always have at least one admin (§2.3.3), so a departure that would leave none dissolves the household instead: it is destroyed under §2.2.8 — totally, including its inventory and **including the accounts of every member still in it**. The person leaving is unaffected by that; they move into their own new household exactly as above.
+**When the last admin leaves, the household they leave is deleted.** Every household must always have at least one admin (§2.3.3), so a departure that would leave none dissolves the household instead: it is destroyed under §2.2.8 — totally, including its inventory, and **without touching anyone's account**. Every member still in it lands in a household of their own exactly as the leaver does, so a dissolution is a mass departure rather than a mass deletion. The person leaving is unaffected by any of it; they move into their own new household exactly as above.
 
-**They are warned first.** Unlike the equivalent account deletion in §2.2.8, this one is announced: the departing admin is told that leaving will delete the household because they are the last admin, before it happens. The difference is deliberate. Someone deleting their account has already accepted that they are destroying something; someone clicking "leave" has not, and would otherwise take down a household and everyone in it while believing they were only removing themselves.
+**They are warned first.** Unlike the equivalent account deletion in §2.2.8, this one is announced: the departing admin is told that leaving will delete the household because they are the last admin, before it happens. The difference is deliberate. Someone deleting their account has already accepted that they are destroying something; someone clicking "leave" has not, and would otherwise take down a household everyone was relying on while believing they were only removing themselves.
 
 **Accepting an invitation is a leave and a join at once.** A member who accepts an invitation to another household (§2.2.6) leaves their current one under all the rules above — most importantly, they arrive with nothing, and if they were its last admin, the household they came from is deleted. The one difference is where they land: they join the inviting household rather than a new one of their own.
 
@@ -282,7 +288,7 @@ Everything else in the product is available to both roles.
 
 **Every household must always have at least one admin.** This is an invariant of the system, not a guideline. Any operation that would leave a household with zero admins is refused — demoting the last admin is not possible.
 
-Account deletion is the one thing that does not resolve this by refusal. When the last admin deletes their account there is no household left to be admin-less: the household and every remaining member are deleted with them (§2.2.8). The invariant is preserved by the household ceasing to exist, not by the deletion being blocked.
+Account deletion is the one thing that does not resolve this by refusal. When the last admin deletes their account there is no household left to be admin-less: the household is dissolved with them and every remaining member is re-homed into one of their own, where each is the sole member and therefore the sole admin (§2.2.8, §2.3.2). The invariant is preserved by the household ceasing to exist, not by the deletion being blocked.
 
 ### 2.4 Authentication
 

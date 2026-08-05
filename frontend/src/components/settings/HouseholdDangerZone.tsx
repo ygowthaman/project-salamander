@@ -16,10 +16,13 @@ import { deleteHousehold, leaveHousehold } from "../../api/households";
 import { useAuth } from "../../auth/useAuth";
 import { HouseholdDetail } from "../../types";
 
+/** How a member stopped being part of the household, for the banner afterwards. */
+export type DepartureKind = "left" | "left-dissolved" | "deleted";
+
 interface HouseholdDangerZoneProps {
   detail: HouseholdDetail;
   /** Reports a completed departure so the section above can say what happened. */
-  onLeft: (previousHouseholdDestroyed: boolean) => void;
+  onDeparted: (kind: DepartureKind) => void;
 }
 
 /**
@@ -27,23 +30,25 @@ interface HouseholdDangerZoneProps {
  * each.
  *
  * They are deliberately asymmetric, and the copy has to carry that: **leaving
- * costs you almost nothing, and deleting destroys everything for everyone.**
+ * costs you what only you could see, and deleting destroys what everyone
+ * shared.** What neither of them costs is an account — nobody is ever signed out
+ * or deleted by either control, which is the thing the copy must not overstate.
  *
  * The last-admin case is what makes leaving dangerous at all. Every household
  * must always have at least one admin, so a departure that would leave none
- * dissolves the household instead of being refused — taking its inventory and
- * the accounts of every member still in it. That is announced here rather than
- * discovered afterwards, which is the one thing this section exists for:
+ * dissolves the household instead of being refused — destroying its inventory
+ * and its records, though not anyone's account. That is announced here rather
+ * than discovered afterwards, which is the one thing this section exists for:
  * someone clicking "leave" has not accepted that they are destroying anything,
- * and would otherwise take down a household and everyone in it while believing
+ * and would otherwise take down a household everyone was using while believing
  * they were only removing themselves.
  *
  * A user who skipped the household step never reaches this screen — they do not
  * know they have a household, and neither of these controls would mean anything
  * to them.
  */
-export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps) {
-  const { applyUser, signOut } = useAuth();
+export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneProps) {
+  const { applyUser } = useAuth();
 
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -64,7 +69,7 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
       // every screen keeps rendering the one they just left.
       applyUser(result.user);
       setLeaveOpen(false);
-      onLeft(result.previous_household_destroyed);
+      onDeparted(result.previous_household_destroyed ? "left-dissolved" : "left");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not leave the household.");
     } finally {
@@ -77,14 +82,17 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
     setError(null);
     setBusy(true);
     try {
-      await deleteHousehold();
-      // The caller's own account went with the household, so there is nothing
-      // left to be signed in as. The logout request will fail against a user
-      // that no longer exists; `signOut` clears local state regardless, which is
-      // the part that matters.
-      await signOut().catch(() => {});
+      const result = await deleteHousehold();
+      // Deleting the household does not delete the account that asked for it, so
+      // the session is still good and this ends the same way a leave does: the
+      // caller is re-homed, and applying the returned user is what re-points the
+      // app at where they landed.
+      applyUser(result.user);
+      setDeleteOpen(false);
+      onDeparted("deleted");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete the household.");
+    } finally {
       setBusy(false);
     }
   }
@@ -115,12 +123,12 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
             mb="md"
           >
             Every household must have at least one admin, so leaving does not just remove you — it
-            deletes <strong>{detail.name}</strong> entirely: its inventory, its records, and the
-            accounts of{" "}
+            deletes <strong>{detail.name}</strong> entirely, along with its inventory and its
+            records.{" "}
             {othersCount === 0
-              ? "everyone in it"
-              : `all ${othersCount} other ${othersCount === 1 ? "member" : "members"}`}
-            . This cannot be undone.
+              ? "You are its only member."
+              : `All ${othersCount} other ${othersCount === 1 ? "member keeps their account and starts fresh on their own" : "members keep their accounts and start fresh on their own"}, but everything the household was tracking is gone.`}{" "}
+            This cannot be undone.
           </Alert>
         )}
 
@@ -142,8 +150,8 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
             <strong>You cannot take a copy with you.</strong> Exporting your data is not built yet.
           </List.Item>
           <List.Item>
-            If you are the last admin, leaving deletes the whole household and every remaining
-            member&rsquo;s account along with it.
+            If you are the last admin, leaving deletes the whole household and everything it was
+            tracking. Everyone still in it keeps their account.
           </List.Item>
         </List>
 
@@ -177,22 +185,22 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
               spending records, its categories and its history.
             </List.Item>
             <List.Item>
-              <strong>Every member&rsquo;s account is destroyed with it, including yours.</strong>{" "}
+              <strong>Nobody&rsquo;s account is deleted, including yours.</strong>{" "}
               {othersCount === 0
                 ? "You are the only member."
-                : `${othersCount} other ${othersCount === 1 ? "person" : "people"} will lose their ${othersCount === 1 ? "account" : "accounts"}, and they are not asked first.`}
+                : `${othersCount} other ${othersCount === 1 ? "person keeps their account" : "people keep their accounts"} and ${othersCount === 1 ? "starts" : "start"} fresh on their own, but ${othersCount === 1 ? "they are" : "they are"} not asked first.`}
             </List.Item>
             <List.Item>
               <strong>This is irreversible.</strong> There is no recovery path, no undo window and
               nothing to restore from.
             </List.Item>
             <List.Item>
-              You are signed out immediately, because the account you are signed in as will no
-              longer exist.
+              You stay signed in. You keep your account and simply start again with an empty
+              inventory, the same as everyone else who was here.
             </List.Item>
             <List.Item>
-              <strong>Just want to leave? Don&rsquo;t delete.</strong> Invite someone,
-              make them an admin, then leave the household.
+              <strong>Just want to leave? Don&rsquo;t delete.</strong> Invite someone, make them an
+              admin, then leave the household — that way its records survive for them.
             </List.Item>
           </List>
 
@@ -217,8 +225,8 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
         </Text>
         {lastAdmin && (
           <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />}>
-            You are the last admin, so this also deletes {detail.name} and the accounts of everyone
-            still in it. This cannot be undone.
+            You are the last admin, so this also deletes {detail.name} and everything it was
+            tracking. Everyone still in it keeps their account. This cannot be undone.
           </Alert>
         )}
       </ConfirmByNameModal>
@@ -233,8 +241,9 @@ export function HouseholdDangerZone({ detail, onLeft }: HouseholdDangerZoneProps
         onConfirm={() => void handleDelete()}
       >
         <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />}>
-          This destroys {detail.name}, everything it owns, and every member&rsquo;s account —
-          including yours. It cannot be undone and there is nothing to restore from.
+          This destroys {detail.name} and everything it owns. Nobody loses their account — you and
+          everyone else keep signing in and start again empty. It cannot be undone and there is
+          nothing to restore from.
         </Alert>
       </ConfirmByNameModal>
     </>
@@ -256,9 +265,9 @@ interface ConfirmByNameModalProps {
  * A destructive confirmation gated on typing the household's name.
  *
  * The typing is what separates "I clicked the wrong button" from "I meant this":
- * both actions behind it are irreversible, and one of them ends other
- * people's accounts. Matching is exact apart from surrounding whitespace — a
- * near-miss is not a confirmation.
+ * both actions behind it are irreversible, and one of them destroys records
+ * other people are relying on. Matching is exact apart from surrounding
+ * whitespace — a near-miss is not a confirmation.
  */
 function ConfirmByNameModal({
   opened,

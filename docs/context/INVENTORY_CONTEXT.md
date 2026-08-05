@@ -39,9 +39,12 @@ shape and no lone-user second case.
 
 Two user columns sit on the item anyway, and neither is ownership:
 
-- **`added_by_user_id`** — who put this on the list (PRD §2.2.9). Displaying that name is the entire
-  reason a soft-deleted user's row survives (PRD §2.2.8), so this must be `ON DELETE SET NULL`,
-  **never CASCADE** — a departing housemate must not delete the household's stock.
+- **`added_by_user_id`** — who put this on the list (PRD §2.2.9). **NOT NULL**, because §2.5.1 makes
+  attribution mandatory; bound from the session on write and never changed afterwards. Displaying
+  that name is the entire reason a soft-deleted user's row survives (PRD §2.2.8), and no path in the
+  product hard-deletes a user at all — an account deletion is a soft delete, and a household deletion
+  destroys the household's items and re-homes its members. So the FK is `ON DELETE RESTRICT`: a net
+  that never fires. **Never CASCADE** — a departing housemate must not delete the household's stock.
 - **`is_private`** — visible only to `added_by_user_id`, **including to admins** (PRD §2.2.9,
   §2.3.1). This is the one place a user column is load-bearing for a read: every read filters
   `NOT is_private OR added_by_user_id = me`.
@@ -153,7 +156,7 @@ categories                     -- household-defined taxonomy (PRD §2.5.2)
 inventory_items                -- EVERY tracked thing, in its complete form. No reorder columns.
   id, household_id → households(id) ON DELETE CASCADE, name,
   category_id → categories(id) ON DELETE RESTRICT,     -- NOT NULL; delete-with-items is 409 + count
-  added_by_user_id → users(id) ON DELETE SET NULL,     -- attribution (§2.2.9), nullable
+  added_by_user_id → users(id) ON DELETE RESTRICT,     -- NOT NULL; attribution (§2.2.9, §2.5.1)
   is_private BOOLEAN NOT NULL DEFAULT false,           -- visible only to added_by (§2.2.9)
   unit (nullable),                                     -- free text, deliberately
   quantity INTEGER (nullable),  -- null = "tracked, count unknown", a real track-only state
@@ -295,7 +298,7 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done
       of the migration path — verify it before stacking new migrations on it.
 - [ ] **Decide the test lane for database behaviour.** `npm test` is a hand-rolled `tsx` script using
       `app.inject()` and is **deliberately database-free**. But the visibility filter, the
-      case-insensitive unique index, `ON DELETE RESTRICT` and the `SET NULL` attribution path are all
+      case-insensitive unique index, `ON DELETE RESTRICT` and the attribution path are all
       DB behaviour. Either add `npm run test:db` against a local Postgres or accept manual
       verification and say so.
 

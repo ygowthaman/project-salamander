@@ -52,16 +52,28 @@ export const inventoryItems = pgTable(
       .references(() => categories.id, { onDelete: "restrict" }),
     // Who put this on the list (PRD §2.2.9). Attribution, NOT ownership — the
     // household owns the item, this is the *who* alongside the household's
-    // *whose*, and displaying it is the entire reason a deleted user's row
+    // *whose*, and displaying it is the entire reason a retired user's row
     // survives as a name (§2.2.8).
     //
-    // SET NULL rather than CASCADE: a departing housemate must not delete the
-    // household's stock. Nullable for the same reason, and because an item can
-    // arrive from a bill import with no member to credit.
+    // NOT NULL, because §2.5.1 makes it mandatory: every item was added by
+    // somebody, and a blank here would be a row the UI cannot attribute and the
+    // soft delete has nothing to protect. Bound from the session on write and
+    // never changed afterwards — it is not in any request body or update schema.
+    //
+    // RESTRICT is the only action consistent with that, and it is a net that
+    // never fires rather than a behaviour anything relies on: no path in the
+    // product hard-deletes a user who has attribution. Deleting an account is a
+    // soft delete (§2.2.8), and deleting a household deletes that household's
+    // items and re-homes its members (§2.2.8) — so the referencing rows are
+    // always gone before the referenced user could be. CASCADE would be wrong
+    // in the way §2.2.10 names outright: a departing housemate must never delete
+    // the household's stock.
     //
     // Never filter on this to decide what a caller may see — with the single
     // exception of `isPrivate` below, which is the one place it is load-bearing.
-    addedByUserId: uuid("added_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    addedByUserId: uuid("added_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     // Visible only to `added_by_user_id` (PRD §2.2.9) — including from admins,
     // who administer the household but get no privileged view of a member's
     // things. Reads therefore filter `NOT is_private OR added_by_user_id = me`.
@@ -95,7 +107,8 @@ export const inventoryItems = pgTable(
     index("inventory_items_category_id_idx").on(t.categoryId),
     // Not for reads — those go through the household index above. This one
     // serves the departure paths, which have to find and delete one member's
-    // private items before the household stops being theirs.
+    // private items before the household stops being theirs, and carries the
+    // ON DELETE RESTRICT check on the column above.
     index("inventory_items_added_by_user_id_idx").on(t.addedByUserId),
   ],
 );

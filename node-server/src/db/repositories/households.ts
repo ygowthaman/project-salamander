@@ -277,7 +277,8 @@ export async function setMemberRole(
  * Moves a member out of the household they are in and into a fresh one of their
  * own (PRD §2.2.10). The shared half of leaving and being removed — the two are
  * the same operation with a different instigator, and nothing below varies by
- * which one it was.
+ * which one it was. `destroyHousehold` runs it over everyone at once, which is
+ * what makes a dissolved household a mass departure rather than a mass deletion.
  *
  * Three things happen, and the order of the first two matters:
  *
@@ -344,8 +345,9 @@ export interface Departure {
   household: Household;
   /**
    * True when the departing member was the last admin, so the household they
-   * left was destroyed behind them — along with every member still in it. The
-   * UI is expected to have warned them first (PRD §2.2.10).
+   * left was dissolved behind them and its inventory destroyed. Everyone still
+   * in it kept their account and was re-homed. The UI is expected to have warned
+   * them first (PRD §2.2.10).
    */
   previousHouseholdDestroyed: boolean;
 }
@@ -354,19 +356,19 @@ export interface Departure {
  * A member leaves the household they are in (PRD §2.2.10), keeping their
  * account, their credentials and their identity.
  *
- * **When the last admin leaves, the household is deleted** — totally, including
- * its inventory and the accounts of every member still in it. A household with
- * no admin is not a state the system allows, and a departure that would produce
- * one dissolves the household instead of being refused. The person leaving is
- * unaffected: they move into their own new household exactly as anyone else
- * does. Note that a sole member is always the sole admin, so leaving a household
- * you were alone in always dissolves it and no empty household is left behind.
+ * **When the last admin leaves, the household is dissolved** — its inventory and
+ * its records go, but nobody's account does. A household with no admin is not a
+ * state the system allows, and a departure that would produce one dissolves the
+ * household instead of being refused; everyone still in it keeps their account
+ * and lands in a silent household of their own, the same way the leaver does.
+ * Note that a sole member is always the sole admin, so leaving a household you
+ * were alone in always dissolves it and no empty household is left behind.
  *
- * The order is load-bearing twice over. The leaver is moved onto their new
- * household **before** the old one is destroyed, because `destroyHousehold`
- * deletes every user still pointing at it — reverse the two and leaving would
- * delete the account of the person who only wanted out. And within the teardown,
- * members go before the household row, since `users.household_id` is RESTRICT.
+ * The leaver is still moved onto their new household **before** the teardown
+ * runs. `destroyHousehold` would re-home them anyway, so this is no longer
+ * load-bearing for their account — but it is what makes the returned
+ * `household` the one they actually chose to move to rather than one the
+ * teardown happened to create for them.
  */
 export async function leaveHousehold(db: Db, userId: string): Promise<Departure | null> {
   return db.transaction(async (tx) => {
@@ -387,21 +389,55 @@ export async function leaveHousehold(db: Db, userId: string): Promise<Departure 
 }
 
 /**
- * Destroys a household and everything it owns, including the accounts of every
- * member still in it (PRD §2.2.8). The only operation in the product that
- * genuinely destroys data.
+ * Destroys a household and everything it owns (PRD §2.2.8) — the only operation
+ * in the product that genuinely destroys data.
  *
- * Members are hard-deleted FIRST: `users.household_id` is ON DELETE RESTRICT,
- * so the household row cannot go while anyone still points at it. That ordering
- * is load-bearing, not incidental — reverse it and the delete fails with a
- * foreign-key violation. Everything else (categories, inventory, events,
- * mandates) is CASCADE off the household, so dropping the row takes it along.
+ * **It destroys the household, not the people in it.** Every member survives
+ * with their account, their credentials and their identity intact, and lands in
+ * a silent household of their own exactly as a departing member does (§2.2.10).
+ * What is destroyed is what the household owned: its inventory, its categories,
+ * its records. Nobody loses an account because somebody else deleted a household.
+ *
+ * The order is load-bearing three times over:
+ *
+ *   1. **The inventory goes first.** It is what the household owned, so it dies
+ *      with the household — and doing it here rather than by cascade also
+ *      releases every `added_by_user_id` reference, which is NOT NULL against a
+ *      RESTRICT foreign key and would otherwise pin the members in place.
+ *   2. **Then the members are re-homed**, because `users.household_id` is also
+ *      RESTRICT: the household row cannot go while anyone still points at it.
+ *   3. **Then the household row**, which cascades to whatever is left
+ *      (categories, and mandates by way of the items already gone).
+ *
+ * Soft-deleted members are re-homed alongside active ones. Their row still
+ * carries a `household_id` and still holds the RESTRICT, so they cannot simply
+ * be skipped; and their name may still be the attribution on an item in some
+ * *other* household, so they cannot be hard-deleted either. They land in an
+ * empty household they will never sign into, which costs one row and keeps
+ * `users.household_id` NOT NULL true without a special case.
  */
 export async function destroyHousehold(db: DbExecutor, householdId: string): Promise<void> {
-  await db.delete(users).where(eq(users.householdId, householdId));
+  await db.delete(inventoryItems).where(eq(inventoryItems.householdId, householdId));
+
+  // Every user pointing at this household, retired ones included — this is a
+  // teardown, not a member list, so the `deleted_at` filter the rest of the
+  // module applies would leave exactly the rows that block the delete below.
+  const occupants = await db.select().from(users).where(eq(users.householdId, householdId));
+  for (const occupant of occupants) {
+    await moveToOwnHousehold(db, occupant);
+  }
+
   await db.delete(households).where(eq(households.id, householdId));
 }
 
+/**
+ * What an account deletion did beyond retiring the account.
+ *
+ * The account itself is soft-deleted either way — these are not two fates for
+ * the person, they are whether the household went with them. `household_destroyed`
+ * means the caller was its last admin, so it was dissolved and everyone else in
+ * it was re-homed; nobody else's account was touched (PRD §2.2.8).
+ */
 export type AccountDeletion = "soft_deleted" | "household_destroyed";
 
 /**
@@ -414,12 +450,19 @@ export type AccountDeletion = "soft_deleted" | "household_destroyed";
  *   - **Ordinarily, a soft delete.** The account is retired and every way back
  *     into it is destroyed, but the row survives so the household keeps a
  *     complete history of who added what. Their private items go with them.
- *   - **When they are the last admin, the household goes too** — totally,
- *     including every remaining member's account. Every household must always
- *     have at least one admin, and account deletion is the one operation that
- *     resolves that invariant by the household ceasing to exist rather than by
- *     being refused. There is no delegation and nobody is prompted to hand the
- *     role over first.
+ *   - **When they are the last admin, the household goes too** — its inventory
+ *     and its records, but *not* the people. Every household must always have at
+ *     least one admin, and account deletion is the one operation that resolves
+ *     that invariant by the household ceasing to exist rather than by being
+ *     refused. There is no delegation and nobody is prompted to hand the role
+ *     over first. Every other member keeps their account and lands in a silent
+ *     household of their own, exactly as they would have if they had left.
+ *
+ * The account being deleted is retired the same way in both branches — the
+ * household's fate does not change what happens to the person asking. In the
+ * last-admin branch `destroyHousehold` re-homes them along with everyone else
+ * first, so the row that gets soft-deleted sits in an empty household of its
+ * own; there is nothing left in it to protect, which is the point.
  *
  * A sole member is always the sole admin, so a user who skipped the household
  * step takes their silent household with them by this same rule — no special
@@ -436,12 +479,15 @@ export async function deleteAccount(db: Db, userId: string): Promise<AccountDele
     // the other is about to invalidate.
     await lockHousehold(tx, user.householdId);
 
-    if (user.role === "admin" && (await countByRole(tx, user.householdId, "admin")) === 1) {
+    const dissolves =
+      user.role === "admin" && (await countByRole(tx, user.householdId, "admin")) === 1;
+
+    if (dissolves) {
       await destroyHousehold(tx, user.householdId);
-      return "household_destroyed";
+    } else {
+      await deletePrivateItemsFor(tx, user.householdId, user.id);
     }
 
-    await deletePrivateItemsFor(tx, user.householdId, user.id);
     // Retiring the account has to remove the ways back into it, not merely mark
     // it: an intact provider link would let the same person sign in again and
     // land on the retired record. `softDeleteUser` discards the password; these
@@ -449,6 +495,6 @@ export async function deleteAccount(db: Db, userId: string): Promise<AccountDele
     await oauthRepo.unlinkAll(tx, user.id);
     await authSessionsRepo.revokeAllForUser(tx, user.id);
     await usersRepo.softDeleteUser(tx, user.id);
-    return "soft_deleted";
+    return dissolves ? "household_destroyed" : "soft_deleted";
   });
 }

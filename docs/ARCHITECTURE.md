@@ -371,7 +371,7 @@ inventory_items                         -- every tracked thing, in its complete 
   id, household_id UUID NOT NULL REFERENCES households(id) ON DELETE CASCADE
   name             TEXT NOT NULL
   category_id      UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT
-  added_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL  -- attribution
+  added_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT -- attribution
   is_private       BOOLEAN NOT NULL DEFAULT false                -- visibility
   unit             TEXT                 -- free text, deliberately
   quantity         INTEGER              -- NULL = "tracked, count unknown"
@@ -387,9 +387,13 @@ mandates                                -- the reorder opt-in; NOT the inventory
 
 Four things in there are easy to get wrong:
 
-- **`added_by_user_id` is `ON DELETE SET NULL`, never CASCADE.** A departing
-  housemate must not delete the household's stock. Deleting a user is a soft
-  delete precisely so that attribution stays displayable.
+- **`added_by_user_id` is `NOT NULL … ON DELETE RESTRICT`, never CASCADE.**
+  Attribution is mandatory (PRD §2.5.1) and bound from the session. No path in
+  the product hard-deletes a user — an account deletion is a soft delete
+  precisely so attribution stays displayable, and a household deletion destroys
+  the household's items and re-homes its members — so `RESTRICT` is a net that
+  never fires. CASCADE would mean a departing housemate deleting the
+  household's stock.
 - **`category_id` is `ON DELETE RESTRICT`.** Deleting a category with items in it
   is a 409 naming the count, not a delete that silently takes a collection.
 - **`inventory_items` carries nothing about reordering.** "Is this reorderable?"
@@ -682,7 +686,7 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 - **Database behaviour has no test lane.** `npm test` covers the guard layer
   (tokens, PKCE, CSRF, Origin, auth gating) and is deliberately database-free, so
   household scoping, the case-insensitive unique index, `ON DELETE RESTRICT` and
-  the `SET NULL` attribution path have nowhere to be tested. Signup, login, the
+  the attribution path have nowhere to be tested. Signup, login, the
   OAuth callback and refresh rotation are likewise uncovered.
 - **No email transport.** `users.email_verified` is set by Google, but a password
   account can never verify, a forgotten password cannot be reset, and household
