@@ -40,8 +40,8 @@
 //
 // A domain table referencing `users(id)` for scope is a bug, not a variation.
 // `oauth_accounts` and `auth_sessions` do it because they are credentials;
-// `inventory_items.added_by_user_id` and `inventory_events.actor_user_id` name
-// a user for attribution and privacy (§2.2.9), never to decide ownership.
+// `inventory_items.added_by_user_id` names a user for attribution and privacy
+// (§2.2.9), never to decide ownership.
 //
 // ---------------------------------------------------------------------------
 // Domain-wide notes (roadmap Phase 1b)

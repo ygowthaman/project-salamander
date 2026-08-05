@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
-import type { InventoryEvent, InventoryItem } from "../db/schema/index.js";
+import type { InventoryItem } from "../db/schema/index.js";
 
 // The REST surface for the inventory module. HTTP concerns only: parse, validate,
 // bind the caller, shape the response. Every handler stops at `todo()` — the
@@ -55,15 +55,12 @@ const listItemsQuery = z.object({
 });
 
 // A stock change is either absolute (`quantity`) or relative (`delta`), never
-// both and never neither. Kept as one endpoint because both produce the same
-// audit row, and the caller should not have to pick a URL based on phrasing.
+// both and never neither. Kept as one endpoint because both land on the same
+// column, and the caller should not have to pick a URL based on phrasing.
 const stockBody = z
   .object({
     quantity: z.number().int().min(0).optional(),
     delta: z.number().int().optional(),
-    // For an interpreted write this is the user's original phrase ("low on
-    // eggs") — provenance for the number, not data anything reads back.
-    reason: z.string().trim().min(1).max(500).nullish(),
   })
   .refine((b) => (b.quantity === undefined) !== (b.delta === undefined), {
     message: "Provide exactly one of `quantity` or `delta`",
@@ -81,11 +78,6 @@ const groupedQuery = z.object({
   // household, so "which one" is the caller's to state. The service still has to
   // verify this user is a member — a uuid in a query string proves nothing.
   household_id: z.string().uuid(),
-});
-
-const listEventsQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
 });
 
 // ---- Serialisation ---------------------------------------------------------
@@ -123,17 +115,6 @@ export type GroupedItemsResponse = {
   group_by: (typeof GROUP_BY)[number];
   groups: ItemGroup[];
 };
-
-function publicEvent(event: InventoryEvent) {
-  return {
-    id: event.id,
-    inventory_item_id: event.inventoryItemId,
-    delta: event.delta,
-    new_stock: event.newStock,
-    reason: event.reason,
-    created_at: event.createdAt.toISOString(),
-  };
-}
 
 // ---- Routes ----------------------------------------------------------------
 
@@ -235,9 +216,9 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     const userId = request.user!.id;
 
     // service: updateItem(userId, params.data.id, parsed.data) -> InventoryItem | null
-    // Quantity moved through here is a correction, not a stock movement: the
-    // event trail and last_updated belong to POST /stock. Worth revisiting when
-    // the service lands — it is the one place the two paths could diverge.
+    // Quantity moved through here is a correction, not a stock movement:
+    // last_updated belongs to POST /stock. Worth revisiting when the service
+    // lands — it is the one place the two paths could diverge.
     void userId;
     return todo(reply, "PATCH /inventory/items/:id");
   });
@@ -250,8 +231,8 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     const userId = request.user!.id;
 
     // service: deleteItem(userId, parsed.data.id) -> boolean
-    // Events cascade with the item. A mandate referencing it does not — that
-    // FK's behaviour is the mandates module's call, so expect a 409 here later.
+    // A mandate referencing the item does not cascade — that FK's behaviour is
+    // the mandates module's call, so expect a 409 here later.
     void userId;
     return todo(reply, "DELETE /inventory/items/:id");
   });
@@ -270,32 +251,12 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     const userId = request.user!.id;
 
     // service: applyStockChange(userId, params.data.id, parsed.data)
-    //   -> { item, event }
-    // One transaction: update quantity + last_updated, insert the event row.
+    //   -> InventoryItem | null
+    // Updates quantity + last_updated.
     // `delta` against a null quantity has no defined result — that is the case
     // to decide explicitly (422, or treat null as 0) rather than let it fall out
     // of the arithmetic.
     void userId;
-    void publicEvent;
     return todo(reply, "POST /inventory/items/:id/stock");
-  });
-
-  app.get("/inventory/items/:id/events", async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    if (!params.success) {
-      return reply.code(422).send({ detail: params.error.issues });
-    }
-    const parsed = listEventsQuery.safeParse(request.query ?? {});
-    if (!parsed.success) {
-      return reply.code(422).send({ detail: parsed.error.issues });
-    }
-    const userId = request.user!.id;
-
-    // service: listEventsForItem(userId, params.data.id, parsed.data)
-    //   -> { events, total }
-    // Read-only by design: events are written only as part of a stock change,
-    // never posted directly, so the audit trail cannot be authored.
-    void userId;
-    return todo(reply, "GET /inventory/items/:id/events");
   });
 };

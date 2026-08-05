@@ -50,7 +50,7 @@ _PRD §5.1, §5.1.1 (precise path), build step 3._
   `ON DELETE RESTRICT` and returns **409 + item count** rather than cascading.
 - **Categories UI page** — lists the user's categories with item counts, supports create / rename /
   delete. A form, not natural language (PRD §5.0 exception, alongside account creation and budgets).
-- `inventory_items` + `inventory_events` tables; user-scoped `GET/POST/PATCH/DELETE /inventory` and
+- `inventory_items` table; user-scoped `GET/POST/PATCH/DELETE /inventory` and
   `POST /inventory/{id}/adjust` (set absolute / increment / decrement).
 - Frontend inventory list + create/edit UI, with the category as a picker over the user's own
   categories rather than a free-text field.

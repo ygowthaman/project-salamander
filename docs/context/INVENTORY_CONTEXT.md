@@ -163,15 +163,6 @@ inventory_items                -- EVERY tracked thing, in its complete form. No 
   -- INDEX (category_id) — carries the RESTRICT check and the per-category counts
   -- INDEX (added_by_user_id) — NOT for reads; it serves the departure paths, which must find
   --   and delete one member's private items before the household stops being theirs.
-
-inventory_events               -- audit trail; one row per applied stock change
-  id, household_id → households(id) ON DELETE CASCADE,   -- denormalised: history is one indexed read
-  inventory_item_id → inventory_items(id) ON DELETE CASCADE,
-  actor_user_id → users(id) ON DELETE SET NULL,          -- who applied it; provenance, never filtered on
-  delta (nullable),          -- an absolute set on a null quantity has no meaningful delta
-  new_stock NOT NULL,        -- what always exists, so it is the NOT NULL one
-  reason (nullable),         -- the user's ORIGINAL PHRASE for interpreted writes
-  created_at
 ```
 
 And the reorder side — **not part of the inventory module**, listed only because it owns the two
@@ -207,9 +198,10 @@ Notes that are easy to get wrong:
   hand" and does not require fractions. See [D7](#d7--quantities-are-integers).
 - **Quantities are stored in the item's base unit.** The model normalises on the way in (*"a dozen"*
   → `12`, *"a loaf"* → `1`).
-- **The qualitative word is never persisted as data** — only as the audit `reason`.
-- `household_id` on `inventory_events` and `mandates` is denormalised from the item, following the
-  convention every domain table uses. Write it from the item's household, never from a request body.
+- **The qualitative word is never persisted.** *"low"* becomes a number on the item; the phrase
+  itself is not stored.
+- `household_id` on `mandates` is denormalised from the item, following the convention every domain
+  table uses. Write it from the item's household, never from a request body.
 
 ---
 
@@ -232,8 +224,7 @@ POST   /inventory/items                    -- structured create
 GET    /inventory/items/{id}
 PATCH  /inventory/items/{id}
 DELETE /inventory/items/{id}
-POST   /inventory/items/{id}/stock         -- { quantity | delta, reason? } — exactly one
-GET    /inventory/items/{id}/events        -- audit trail for one item
+POST   /inventory/items/{id}/stock         -- { quantity | delta } — exactly one
 
 # Inventory — the natural-language path (NOT BUILT; frontend calls it against a mock)
 POST   /inventory/interpret  { text, exchange_id? }
@@ -253,7 +244,8 @@ POST   /inventory/interpret  { text, exchange_id? }
    4a. Question  → return it to the client, increment the turn counter, do not write
    4b. Object    → validate with the SAME zod schema; invalid → treat as unresolved
 5. At turn 10 with no valid object           fail: server-written message pointing at the form
-6. Commit in one transaction                 item rows + inventory_events together
+6. Commit in one transaction                 every item row the sentence named (§2.5.8:
+                                             any unresolved part blocks the whole)
 7. Push on the household channel             filtered by visibility (private → owner only)
 8. Respond with the applied old→new diff
 ```
@@ -269,7 +261,7 @@ exchange in anything durable (PRD §2.5.7 — it is ephemeral).
 | **Read** | *"Do I have 1984?"* | a query DTO → rows rendered in the normal table. Writes nothing |
 | **Update** | *"Make my copy of 1984 a special edition"* | a change to an existing item (incl. `attributes`) |
 | **Delete** | *"Remove 1984 from my books"* | that row deleted |
-| **Stock** | *"low on eggs, out of bread"* | quantity changes + `inventory_events` rows |
+| **Stock** | *"low on eggs, out of bread"* | quantity changes — **update** narrowed to `quantity`, not a fifth operation |
 
 **Read matches loosely** — *1984* must find the item whether it is stored as *1984* or *Nineteen
 Eighty-Four*, so it resolves against `attributes` as well as `name`, and says plainly that nothing
@@ -311,8 +303,8 @@ Route plugins are registered in **`app.ts`**; `server.ts` only binds the port an
 
 ### Chunk 1 — schema `[x]`
 
-- [x] `categories`, `inventory_items`, `inventory_events`, `mandates` in `db/schema/`, household
-      scoped, with attribution and privacy columns
+- [x] `categories`, `inventory_items`, `mandates` in `db/schema/`, household scoped, with
+      attribution and privacy columns
 - [x] `UNIQUE (household_id, lower(name))` as an expression index
 - [x] Migration generated
 
@@ -321,15 +313,15 @@ Route plugins are registered in **`app.ts`**; `server.ts` only binds the port an
 Every handler in `api/inventory.ts` currently stops at `todo()` → 501. The seam is marked; the
 service behind it is not written.
 
-- [ ] `db/repositories/{categories,inventoryItems,inventoryEvents}.ts` — household-scoped
+- [ ] `db/repositories/{categories,inventoryItems}.ts` — household-scoped
       (`…ForHousehold`), taking a `DbExecutor`. **These do not exist**; the convention every other
       table follows is not yet honoured here.
 - [ ] **The visibility filter, in exactly one place.** `NOT is_private OR added_by_user_id = me`
       belongs in the repository, not repeated at each route — repeated, it will be forgotten once.
-- [ ] Stock writes: item update + `inventory_events` row in **one transaction**
+- [ ] Stock writes: quantity + `last_updated` on the item
 - [ ] 409 + item count on category delete-with-items; 404 (not 403) cross-household
-- [ ] Tests: household scoping, the visibility filter, adjust arithmetic, event rows written,
-      track-only items (null quantity/unit), and that nothing here imports anything reorder-related
+- [ ] Tests: household scoping, the visibility filter, adjust arithmetic, track-only items
+      (null quantity/unit), and that nothing here imports anything reorder-related
 
 ### Chunk 3 — close the PRD gaps in the API `[ ]`
 
@@ -425,7 +417,7 @@ explicitly deferred, not refused on principle).
 | Question | Why it matters here |
 |---|---|
 | **What do *"low"* / *"out"* / *"plenty"* map to?** §2.5.8 uses *"low on eggs and milk, out of bread"* as an example but never defines the mapping. The build needs it, and it needs both bands: **anchored** on `mandates.par_level` where a row exists, **unanchored** otherwise (a book has no mandate, ever). | Blocks Chunk 6 |
-| **`inventory_events` is not in the PRD at all.** The table exists and holds the original phrase in `reason` — which is exactly what §2.5.7 says it "does not settle". | The code has answered a question the spec left open |
+| **Does a committed write store the sentence that produced it?** §2.5.7 raises this and explicitly declines to settle it. Nothing stores it today. | Decides whether stock writes need any record beyond the item row |
 | **Reorder / `mandates` is not in the PRD.** §2.5.1 says only that the item record says nothing about buying. The table is built. | Chunk 6's anchored band depends on it |
 | **Category management surface** — creating, renaming, deleting, and what happens to a category with items (§2.5.2 TBD) | Blocks the categories page |
 | **Category seeding for a new household** — empty, or a starter set? (§2.5.2 TBD) | First-run experience |
@@ -451,8 +443,8 @@ explicitly deferred, not refused on principle).
 
 | Layer | State |
 |---|---|
-| **Schema** | ✅ `households`, `auth`, `categories`, `inventory_items`, `inventory_events`, `mandates` — household-scoped, with `added_by_user_id` and `is_private`. Matches PRD §2.5 |
-| **Migration** | ⚠️ one squashed `0000_nasty_silver_centurion.sql`, **never run against a live Postgres** |
+| **Schema** | ✅ `households`, `auth`, `categories`, `inventory_items`, `mandates` — household-scoped, with `added_by_user_id` and `is_private`. Matches PRD §2.5 |
+| **Migration** | ⚠️ one regenerated baseline `0000_init.sql` (7 tables), **never run against a live Postgres** |
 | **Repositories** | ❌ only `authSessions`, `households`, `oauthAccounts`, `users`. No inventory repositories |
 | **Routes** | ⚠️ `api/inventory.ts` is 301 lines of zod schemas, serialisers and route registrations — **every handler returns 501 via `todo()`**. The seam is marked, the service is not written |
 | **Agent** | ❌ `src/agent/` holds `AGENT_CONTEXT.md` and no code |
@@ -534,8 +526,8 @@ benefit — the scheduler would need precedence, and the user would have to reas
 levels without a rule is a null `trigger_condition`; pausing is out of scope (raise stock above
 `restock_level`); purchase quantity ≠ restock level is `shopping_query` alongside `restock_level`.
 
-**Known cost accepted.** Pausing by raising stock records a level the user does not physically have,
-so `inventory_events` shows a change that never happened. Acceptable while pause is out of scope.
+**Known cost accepted.** Pausing by raising stock records a level the user does not physically have.
+Acceptable while pause is out of scope.
 
 ### D5 — the PRD is authoritative again; D2 is retired
 _2026-08-05 · maintainer_

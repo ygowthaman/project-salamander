@@ -100,41 +100,5 @@ export const inventoryItems = pgTable(
   ],
 );
 
-// Audit trail: one row per applied stock change, written in the same
-// transaction as the item update it describes.
-export const inventoryEvents = pgTable(
-  "inventory_events",
-  {
-    id: uuid("id").primaryKey().$defaultFn(randomUUID),
-    // Denormalised from the item so the household's history is one indexed
-    // read, without a join through `inventory_items`.
-    householdId: uuid("household_id")
-      .notNull()
-      .references(() => households.id, { onDelete: "cascade" }),
-    inventoryItemId: uuid("inventory_item_id")
-      .notNull()
-      .references(() => inventoryItems.id, { onDelete: "cascade" }),
-    // Who applied the change — provenance for display, the same shape and the
-    // same rules as `inventory_items.added_by_user_id`. Never filtered on; it
-    // sits alongside `reason` rather than alongside `household_id`.
-    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
-    // Nullable: an absolute set on an item whose quantity was null has no
-    // meaningful delta. `new_stock` is what always exists, so it is the NOT NULL one.
-    delta: integer("delta"),
-    newStock: integer("new_stock").notNull(),
-    // For an interpreted write this holds the user's ORIGINAL PHRASE ("low on
-    // eggs"). The qualitative word is never persisted as data anywhere else —
-    // the number is the data, this is the provenance.
-    reason: text("reason"),
-    createdAt: createdAt(),
-  },
-  (t) => [
-    index("inventory_events_household_id_created_at_idx").on(t.householdId, t.createdAt),
-    index("inventory_events_item_id_created_at_idx").on(t.inventoryItemId, t.createdAt),
-  ],
-);
-
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 export type NewInventoryItem = typeof inventoryItems.$inferInsert;
-export type InventoryEvent = typeof inventoryEvents.$inferSelect;
-export type NewInventoryEvent = typeof inventoryEvents.$inferInsert;

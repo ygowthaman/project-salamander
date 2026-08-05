@@ -73,9 +73,10 @@ Keep transactions short and never hold one across an LLM call — that would pin
 for the duration of a network round trip to Anthropic. Assemble context, close the read, make the
 call, then open a transaction for the write.
 
-A single interpret-and-commit does its write inside one transaction so the row change and its
-`inventory_events` audit row land together. Repositories take a `DbExecutor`, so the same function
-works inside or outside a transaction — see `../db/DB_CONTEXT.md`.
+An interpret-and-commit does its write inside one transaction because one sentence may name several
+items (PRD §2.5.8) and a half-applied sentence leaves the user to work out which half landed.
+Repositories take a `DbExecutor`, so the same function works inside or outside a transaction — see
+`../db/DB_CONTEXT.md`.
 
 ## The WebSocket push channel
 

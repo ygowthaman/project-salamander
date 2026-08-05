@@ -17,7 +17,7 @@ them. [`PRD.md`](PRD.md) specifies *what* the product does and why;
 **What runs today:** authentication (email + password and Google OAuth, enforced
 on every route), households with their routes and settings UI, `GET /health`, and
 the full domain schema — `households`, `users`, `categories`, `inventory_items`,
-`inventory_events`, `mandates`. The inventory routes exist with their validation
+`mandates`. The inventory routes exist with their validation
 and serialisation wired, but every handler returns 501: the service layer beneath
 them is deliberately unwritten, so the seam is marked rather than guessed at.
 
@@ -210,7 +210,7 @@ node-server/src/
     │   ├── households.ts    The ownership root; imports nothing
     │   ├── auth.ts          users / oauth_accounts / auth_sessions
     │   ├── categories.ts    Household-scoped taxonomy
-    │   ├── inventory.ts     inventory_items + inventory_events
+    │   ├── inventory.ts     inventory_items
     │   └── mandates.ts      The reorder opt-in (imports inventory, never the reverse)
     ├── migrate.ts         Startup migration runner (also `npm run db:migrate`)
     ├── reset-migrations.ts  Clears drizzle/ so db:generate writes a fresh baseline
@@ -317,8 +317,8 @@ and the pool hands out a connection per query.
 Repositories accept a **`DbExecutor`** — either the pool-backed `db` or a
 transaction handle from `db.transaction(...)`. That single type is what lets the
 same repository function run inside or outside a transaction, which the
-interpret-and-commit flow relies on to write a row and its audit event
-atomically.
+interpret-and-commit flow relies on when one sentence names several items and
+either all of them land or none do.
 
 ---
 
@@ -378,10 +378,6 @@ inventory_items                         -- every tracked thing, in its complete 
   attributes       JSONB                -- author/edition/isbn, model number
   created_at, last_updated
 
-inventory_events                        -- audit trail; one row per stock change
-  id, household_id, inventory_item_id, actor_user_id
-  delta INTEGER, new_stock INTEGER NOT NULL, reason TEXT, created_at
-
 mandates                                -- the reorder opt-in; NOT the inventory module
   id, household_id, inventory_item_id
   par_level INTEGER NOT NULL, restock_level INTEGER
@@ -410,9 +406,9 @@ The conventions these tables set, which any new table should follow:
   extension is required and the ID is known before the insert returns.
 - **Every domain table carries `household_id UUID NOT NULL REFERENCES
   households(id) ON DELETE CASCADE`**, and is indexed on `(household_id, …)` for
-  its common list query. It is denormalised onto child tables (`inventory_events`,
-  `mandates`) so a household's history is one indexed read rather than a join —
-  and it is always copied from the parent row, never read from a request body.
+  its common list query. It is denormalised onto child tables (`mandates`) so a
+  household's rows are one indexed read rather than a join — and it is always
+  copied from the parent row, never read from a request body.
 - **A table whose existence encodes an opt-in beats nullable columns that encode
   it by convention.** `mandates` is the worked example. Split when a column is
   *inapplicable* to some rows; do **not** split merely because it is *unset* on
@@ -507,7 +503,7 @@ natural-language input in the product runs through it:
                             accept directly. Invalid → treat as unresolved
 5. At turn 10, unresolved:  fail. A SERVER-WRITTEN message points the user at the
                             form. Nothing is written
-6. Commit:                  item rows + inventory_events in ONE transaction
+6. Commit:                  every item row the sentence named, in ONE transaction
 7. Push:                    the changed rows, to the members allowed to see them
 8. Respond:                 the applied old→new diff, so the UI clears the input
                             and shows what it did
@@ -667,7 +663,7 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 - **The inventory service layer does not exist.** `api/inventory.ts` holds the zod
   schemas, serialisers and route registrations, but **every handler returns 501**.
   The repositories those routes are meant to delegate to (`categories`,
-  `inventoryItems`, `inventoryEvents`) do not exist either.
+  `inventoryItems`) do not exist either.
 - **The inventory UI renders against a mock.** `InventoryPage` and
   `InventoryItemCard` read `api/mocks/inventory.groupedByCategory.json`, and the
   natural-language box posts to a `/inventory/interpret` that has no server side.
