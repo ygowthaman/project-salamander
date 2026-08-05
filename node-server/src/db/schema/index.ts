@@ -26,8 +26,9 @@
 //
 //   - `households.ts` imports nothing. It is the root, and an owner/creator FK
 //     back to `users` would close a cycle with `users.household_id`.
-//   - `inventory.ts` must never import `mandates.js` (decision D1) — as
-//     separate files that is greppable rather than merely written down.
+//   - `inventory.ts` must never import `mandates.js`: the inventory module has
+//     no knowledge of reordering, and as separate files that is greppable
+//     rather than merely written down.
 //
 // ---------------------------------------------------------------------------
 // Ownership (PRD §2.2)
@@ -44,14 +45,17 @@
 // (§2.2.9), never to decide ownership.
 //
 // ---------------------------------------------------------------------------
-// Domain-wide notes (roadmap Phase 1b)
+// Domain-wide notes
 //
-// The operative model is docs/context/INVENTORY_CONTEXT.md §2, NOT docs/PRD.md
-// §6: decisions D1 + D4 moved `par_level` / `restock_level` off `inventory_items`
-// onto `mandates`, one row per item. The PRD is knowingly stale on that point
-// until the Chunk 8 reconciliation pass — do not "fix" this back to match it.
+// `par_level` and `restock_level` live on `mandates`, one row per item, and
+// never on `inventory_items`. PRD §2.5.1 says the same thing in prose: the item
+// record says nothing about buying the thing, because a book and a carton of
+// eggs must both be complete records and a column meaningless for half the rows
+// forces every reader to guess whether blank means "not set yet" or "does not
+// apply here".
 //
-// Quantities are `integer`, NOT the fractional value PRD §5.1 describes (D5).
+// Quantities are `integer`. PRD §2.5.1 asks only for "how much is on hand" and
+// never requires fractions.
 // `unit` is user-defined free text, so the user picks the granularity at which
 // things are whole: half a dozen eggs is `6 × each`, not `0.5 × dozen`; a
 // half-kilo bag of rice is `1 × "1/2 kg bag"`. That makes the interpreter's

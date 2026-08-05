@@ -1,7 +1,8 @@
 # Salamander
 
-A shopping agent. It tracks what you own and, when stock runs low, assembles a
-ready-to-checkout cart for you to place. The app never completes a checkout.
+A shopping agent. It tracks what your household owns and, when stock runs low,
+assembles a ready-to-checkout cart for you to place. The app never completes a
+checkout itself.
 
 **By design, there is no chatbot.** The LLM is an *interpreter*: wherever the app
 needs structured data, you type a plain sentence and the model turns it into the
@@ -11,16 +12,17 @@ record the server stores.
 "Add 1984 to my Books"  →  { name: "1984", category_id: "…", … }  →  saved  →  pushed to the UI
 ```
 
-Every model call is single-turn, non-streaming, and returns structured output —
-never prose shown to a user. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-for the architecture, [`docs/PRD.md`](docs/PRD.md) for the product spec, and
-[`docs/ROADMAP.md`](docs/ROADMAP.md) for what ships when.
+Read next:
 
-> **Current state: accounts, and not much else yet.** Sign in with Google or with
-> email + password — JWT session cookies with CSRF, auth enforced on every route
-> (roadmap Phase 1a) — on a foundation of Fastify, Postgres/Drizzle with startup
-> migrations. The interpreter model above is the *target*, and inventory is the
-> next thing to land.
+- [`docs/PRD.md`](docs/PRD.md) — what the product does and why.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how it is built, and what is
+  not built yet.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — the as-built GCP runbook.
+
+> **Current state: accounts, and not much else.** Sign in with Google or with
+> email + password, on a foundation of Fastify, Postgres and Drizzle. Inventory
+> is the next thing to land; the interpreter above is still the target rather
+> than the present tense.
 
 | Piece | Stack | Local URL |
 |---|---|---|
@@ -76,14 +78,8 @@ npm install
 npm run dev
 ```
 
-Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it applies
-any pending migrations from `drizzle/`, creating the `users`, `oauth_accounts`
-and `auth_sessions` tables on the first run.
-
-> **One migration is destructive, and only on an old database.**
-> `0001_drop_legacy_chat_tables.sql` drops the `sessions` and `messages` tables
-> left behind by the retired Python backend. Nothing in this schema creates them,
-> so on a database provisioned from this migration chain it does nothing.
+Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it
+applies any pending migrations from `drizzle/`.
 
 **Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
@@ -92,26 +88,15 @@ are set. To enable it, create a Web application OAuth client with the redirect U
 `http://localhost:8000/auth/google/callback` (see
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §9).
 
-Verify:
-
-```bash
-# Unauthenticated — expect 401 plus a Set-Cookie minting the CSRF token.
-curl -i http://localhost:8000/auth/me
-# HTTP/1.1 401 Unauthorized
-# set-cookie: sal_csrf=...
-```
+Verify it is serving:
 
 ```bash
 curl http://localhost:8000/health
 # {"status":"ok"}
 ```
 
-Every other route requires a session cookie *and* an `X-CSRF-Token` header
-matching the `sal_csrf` cookie, so they are easiest to exercise through the app
-rather than curl. Run the guard-layer checks with:
-
 ```bash
-npm test        # tokens, PKCE, CSRF, Origin, auth gating — needs no database
+npm test        # guard-layer checks: tokens, PKCE, CSRF, Origin, auth gating — needs no database
 ```
 
 ### 3. Frontend
@@ -123,14 +108,8 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**.
-
-You get the login screen, and a placeholder shell once signed in — the inventory
-UI is the next thing to land there.
-
-> `VITE_WS_URL` is currently unused: the per-user push channel has not been built
-> yet. Set it correctly anyway, or the first thing that opens a socket will
-> inherit a stale default.
+Open **http://localhost:5173**. You get the login screen, and a placeholder shell
+once signed in.
 
 ---
 
@@ -164,43 +143,6 @@ Both are read at build time by Vite. Restart `npm run dev` after changing them.
 
 ---
 
-## API
-
-### Today
-
-`POST /auth/signup` · `POST /auth/login` · `GET /auth/google` ·
-`GET /auth/google/callback` · `POST /auth/refresh` · `POST /auth/logout` ·
-`GET /auth/me` · `PATCH /auth/me` · `POST /auth/change-password` ·
-`DELETE /auth/me`.
-
-Access token in an httpOnly cookie, refresh with rotation and server-side
-revocation, double-submit CSRF token on every mutating request, `Origin` checked
-at the WebSocket handshake (once a socket exists again). Signup and login are
-rate-limited. The design reasoning is in
-[`node-server/src/auth/AUTH_CONTEXT.md`](node-server/src/auth/AUTH_CONTEXT.md).
-
-**`GET /health`** — `{ "status": "ok" }`. Unauthenticated and database-free: it
-reports that the process is serving, not that Postgres is reachable.
-
-That is the whole surface.
-
-### Next
-
-The routes that fill the gap — categories, inventory, and the per-user WebSocket
-push channel — are specified in [`docs/PRD.md`](docs/PRD.md) §7 and sequenced in
-[`docs/ROADMAP.md`](docs/ROADMAP.md).
-
-Two conventions those routes will follow, worth knowing before you add one:
-
-- **Natural-language input goes to a route, not a socket.** A text input POSTs to
-  a REST endpoint that interprets, validates with zod, and commits (or returns a
-  draft — the choice is per module, see PRD §5.0).
-- **The WebSocket is server→client only.** It carries typed data events
-  (`inventory.upserted`, `cart.updated`, …) so the UI can update live. It is
-  best-effort; REST remains the source of truth.
-
----
-
 ## Common tasks
 
 ```bash
@@ -230,42 +172,10 @@ sudo -u postgres psql -c "DROP DATABASE salaman_db;"   # rarely needed — db:re
 
 ---
 
-## Deployment
-
-[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) is the as-built runbook — Cloud Run for
-the backend, PostgreSQL on a Compute Engine VM reached over Direct VPC egress, and
-Firebase Hosting for the frontend. Two things matter enough to repeat here.
-
-**Deploys build from source — no Docker.** Cloud Run builds the image from the
-source tree with Cloud Buildpacks; there is no Dockerfile to maintain and no local
-Docker to install. The only CLI you need is `gcloud`:
-
-```bash
-gcloud run deploy salamander-server --source .
-```
-
-**Long-lived WebSockets will need non-default Cloud Run flags** — nothing opens
-a socket today, but the push channel will:
-
-```bash
-gcloud run deploy salamander-server --source . \
-  --session-affinity \    # keep a user's requests on one instance
-  --timeout=3600          # max socket lifetime; the 300s default drops idle sockets
-```
-
-Session affinity is best-effort — a scale-down still cuts live sockets, and the
-frontend has no reconnect logic (see `docs/ARCHITECTURE.md` → *Known gaps*). That
-matters less than it looks: because the channel is an optimization rather than
-the source of truth, a dropped socket leaves the UI stale until the next fetch
-rather than losing anything.
-
----
-
 ## Troubleshooting
 
 **Signed in, but the app looks empty.** That is the current state — the inventory
-UI has not landed. `GET /health` and the `/auth/*` routes are the whole backend
-surface.
+UI has not landed.
 
 **Backend exits with `DATABASE_URL is not set`.** You skipped
 `cp .env.example .env`, or you're running from the repo root instead of
@@ -288,11 +198,10 @@ Node 20 to regenerate migrations.
 
 ```
 project-salamander/
-├── node-server/    backend — see src/{db,api,agent}/*_CONTEXT.md for design notes
-├── frontend/       React SPA (login + a placeholder signed-in shell)
+├── node-server/    backend — Fastify, Drizzle, Postgres
+├── frontend/       React SPA
 └── docs/
-    ├── ARCHITECTURE.md   architecture, data model, runtime flows, deployment
-    ├── PRD.md            product spec for the shopping agent
-    ├── ROADMAP.md        phased delivery plan
+    ├── PRD.md            product spec
+    ├── ARCHITECTURE.md   how it is built
     └── DEPLOYMENT.md     as-built GCP runbook
 ```

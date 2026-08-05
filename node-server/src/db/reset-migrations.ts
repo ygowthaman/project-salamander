@@ -14,8 +14,7 @@
 // real TTY and aborts under piped input or CI. Against an empty folder every
 // table is a create, so there is no ambiguity left to ask about.
 //
-// Switch back to appending diffs before any database holds real data; see
-// DB_CONTEXT.md → migrate.ts.
+// Switch back to appending diffs before any database holds real data.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

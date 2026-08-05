@@ -26,7 +26,7 @@ import { households } from "./households.js";
 // display-only column alongside `household_id` (see `inventory.ts`).
 
 // Two roles, carried on the user rather than on a membership row, because a
-// user belongs to exactly one household (PRD §2.3). If multi-household
+// user belongs to exactly one household (PRD §2.2.2). If multi-household
 // membership ever lands, this column moves onto the join table with it — the
 // two readings ("role" and "role in this household") coincide only while the
 // user has one household.

@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { createdAt, updatedAt } from "./common.js";
 import { households } from "./households.js";
 
-// User-defined taxonomy, curated from its own management page (PRD §5.1.1) —
+// User-defined taxonomy, curated from its own management page (PRD §2.5.2) —
 // never written by an interpreter as free text. It exists as a table because
 // budgets aggregate spend by category: as a string column, an interpreter
 // writing `grocery` one day and `groceries` the next would silently split a

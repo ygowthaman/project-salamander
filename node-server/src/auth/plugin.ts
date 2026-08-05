@@ -66,9 +66,10 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     request.user = await usersRepo.getUserById(db, userId);
   });
 
-  // CSRF: SameSite=Lax is the baseline, but PRD §3.4 requires defence in depth
-  // for money-adjacent actions, so mutations also need a matching double-submit
-  // token and a recognised Origin.
+  // CSRF: SameSite=Lax is the baseline, but PRD §2.4.4 sets the bar at
+  // defence-in-depth deliberately — these requests will eventually move money —
+  // so mutations also need a matching double-submit token and a recognised
+  // Origin.
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     if (!MUTATING_METHODS.has(request.method)) return;
     if (CSRF_EXEMPT_PATHS.has(new URL(request.url, "http://x").pathname)) return;

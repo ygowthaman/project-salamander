@@ -13,7 +13,6 @@ Read order for context:
 1. This file.
 2. `docs/IDEAS.md` — the raw product vision this PRD formalizes.
 3. `ARCHITECTURE.md` — the architecture of the shipped backend foundation.
-4. The `*_CONTEXT.md` files under `node-server/src/` — why the current code is shaped the way it is.
 
 > **Note on the two "PRD" files.** The root `PRD.md` documents the *completed* Python→Node
 > backend rewrite and is now historical. **This** file is the forward-looking product PRD. If the

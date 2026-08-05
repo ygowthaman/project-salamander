@@ -21,13 +21,16 @@ function delay(ms: number): Promise<void> {
  * The inventory list, already bucketed by category — the grouping is the
  * server's job because it owns the category rows, and doing it here would mean
  * the client inventing a display order the server can't reproduce.
+ *
+ * Category is the only grouping there is, so the endpoint takes no dimension:
+ * `unit` is free text precisely because nothing groups or totals by it.
  */
 export async function getInventoryGroupedByCategory(): Promise<InventoryGrouped> {
   if (USE_MOCKS) {
     await delay(MOCK_LATENCY_MS);
     return groupedByCategory as InventoryGrouped;
   }
-  return apiFetch<InventoryGrouped>("/inventory?groupBy=category");
+  return apiFetch<InventoryGrouped>("/inventory/items/grouped");
 }
 
 /** What the server sends back after interpreting and committing a sentence. */

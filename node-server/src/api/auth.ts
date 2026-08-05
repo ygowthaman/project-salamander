@@ -343,8 +343,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const updated = await usersRepo.updateUser(db, user.id, {
       ...(display_name === undefined ? {} : { displayName: display_name }),
       // A changed address is unproven until re-verified. Verification only gates
-      // the autonomous-ordering stretch goal (PRD §5.11), so this does not lock
-      // the user out of anything they can do today.
+      // autonomous shopping, which PRD §1 names as the long-term direction and
+      // not the starting point, so this does not lock the user out of anything
+      // they can do today.
       ...(email && email.toLowerCase() !== user.email ? { email, emailVerified: false } : {}),
     });
 

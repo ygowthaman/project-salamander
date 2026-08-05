@@ -38,7 +38,7 @@ A removal is not done until every layer is clean. For this repo, walk:
 4. **API** — routes, zod schemas, serialisers, wire shapes, and the comments describing them
 5. **Frontend** — types, API clients, components, mocks in `api/mocks/`
 6. **Tests** — cases, fixtures, helpers
-7. **Docs** — `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/ROADMAP.md`, `docs/context/*.md`, and the folder context files `src/db/DB_CONTEXT.md`, `src/api/API_CONTEXT.md`, `src/agent/AGENT_CONTEXT.md`
+7. **Docs** — `README.md`, `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOYMENT.md`
 
 Also fix anything the removal made *wrong* rather than merely absent: a comment saying "one transaction so A and B land together" when B is gone, a stated count ("8 tables"), a list that now has one item, a link to a deleted anchor.
 

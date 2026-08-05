@@ -4,8 +4,7 @@ Salamander is a household inventory system: it tracks what a home owns, how much
 is left, and what has run low, and builds a spending record alongside that
 inventory. This document is the source of truth for how the system is built — its
 layers, data model, runtime flows, deployment shape, and the decisions behind
-them. [`PRD.md`](PRD.md) specifies *what* the product does and why;
-[`ROADMAP.md`](ROADMAP.md) sequences the work.
+them. [`PRD.md`](PRD.md) specifies *what* the product does and why.
 
 > ### ⚠️ Parts of this document are specification, not code
 >
@@ -230,10 +229,6 @@ would close a cycle with `users.household_id`), and `inventory.ts` must never
 import `mandates.ts`. As separate files, both are greppable rather than merely
 written down.
 
-Each folder carries a `*_CONTEXT.md` explaining the "why" behind its design:
-`db/DB_CONTEXT.md`, `api/API_CONTEXT.md`, `agent/AGENT_CONTEXT.md`,
-`auth/AUTH_CONTEXT.md`.
-
 ### `app.ts` / `server.ts` — composition root
 
 `app.ts` builds the fully-wired Fastify instance without binding a port: CORS
@@ -253,8 +248,7 @@ Owns accounts, credentials and session cookies. A 15-minute access JWT rides in 
 httpOnly cookie (so the WebSocket upgrade carries it automatically), backed by
 opaque, rotating refresh tokens whose SHA-256 lives in `auth_sessions` for
 revocation. Google sign-in is OIDC with PKCE, linked on the provider's stable
-`sub` claim. See `auth/AUTH_CONTEXT.md` for the reasoning, including why the
-cookie domain dictates the deployment shape.
+`sub` claim. The cookie domain is what dictates the deployment shape.
 
 It knows nothing about the domain: it supplies `request.user`, and every domain
 route and the push channel derive their **`household_id`** from there — never
@@ -302,7 +296,7 @@ Callers pass context (the household's categories, the items in the asking
 member's view) and get back parsed, schema-shaped data or a question. The agent
 layer performs no database access and no writes; it receives the context it needs
 as arguments. That is what keeps household scoping and privacy filtering concerns
-of the caller, which the model cannot influence — see `agent/AGENT_CONTEXT.md`.
+of the caller, which the model cannot influence.
 
 The Anthropic TS SDK is async and non-blocking by construction, so a single
 process serves concurrent interpretation calls without blocking the event loop.
@@ -437,7 +431,6 @@ existing ones.
 db:reset` runs both, which is the normal response to a schema edit. Nothing is
 hand-edited and nothing is caught up, because no database holds data worth
 keeping — the moment one does, the chain freezes and diffs get appended again.
-See `node-server/src/db/DB_CONTEXT.md` for what that switch involves.
 
 > **Requires `drizzle-kit` >= 0.31.** Older versions load the schema through CJS
 > `require`, which cannot resolve the `./auth.js` specifiers NodeNext ESM obliges
@@ -664,22 +657,20 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 
 ## Known gaps
 
-- **The inventory service layer does not exist.** `api/inventory.ts` holds the zod
-  schemas, serialisers and route registrations, but **every handler returns 501**.
-  The repositories those routes are meant to delegate to (`categories`,
-  `inventoryItems`) do not exist either.
+- **The inventory service layer does not exist.** The `categories` and
+  `inventoryItems` repositories are written — household-scoped, visibility
+  filtered, attribution joined — but nothing calls them: `api/inventory.ts` holds
+  the zod schemas, serialisers and route registrations, and **every handler still
+  returns 501**.
+- **None of the inventory repositories has run against Postgres.** `npm test` is
+  deliberately database-free, and the migrations have never been applied
+  anywhere, so the visibility filter, the `ON DELETE RESTRICT` refusal and the
+  attribution join are verified as types and compiled SQL, not as behaviour.
 - **The inventory UI renders against a mock.** `InventoryPage` and
   `InventoryItemCard` read `api/mocks/inventory.groupedByCategory.json`, and the
   natural-language box posts to a `/inventory/interpret` that has no server side.
-  The client and server also disagree on the route shape — the client calls
-  `/inventory?groupBy=category`, the server serves
-  `/inventory/items/grouped?group_by=…`.
-- **Nothing implements the visibility filter yet.** `NOT is_private OR
-  added_by_user_id = me` is a schema comment and a product rule; no query
-  enforces it, and the inventory wire shape omits `is_private` and
-  `added_by_user_id` entirely, so no client could act on it either. The same
-  wire shape has no way to *set* `is_private`, so a private item cannot currently
-  be created through the API.
+  Flipping `USE_MOCKS` in `frontend/src/api/inventory.ts` is the whole migration
+  once the routes are wired.
 - **The migration has never been applied to a live Postgres.** Doing so is the
   first real test of the migration path and should happen before anything is
   stacked on top of it.
@@ -771,7 +762,8 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 ## What's next
 
 Specified in [`PRD.md`](PRD.md) and sequenced in [`ROADMAP.md`](ROADMAP.md); the
-inventory build is tracked in `docs/context/INVENTORY_CONTEXT.md`. In brief:
+places the inventory code still contradicts the PRD are listed in
+[`docs/context/INVENTORY_CONFLICTS.md`](context/INVENTORY_CONFLICTS.md). In brief:
 
 1. **The inventory service layer** — behind the routes that already exist, with
    the visibility filter expressed once in the repository layer.

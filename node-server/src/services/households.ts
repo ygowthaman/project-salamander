@@ -17,8 +17,8 @@ import type { Household, User, UserRole } from "../db/schema/index.js";
  *   - **The household id.** It is never an argument. Every function takes the
  *     authenticated `User` and reads `actor.householdId` off it, so there is no
  *     parameter a caller could fill from a request body or an LLM response. That
- *     is the same binding rule the domain tables have (`db/DB_CONTEXT.md`),
- *     expressed as an absent parameter rather than as a convention.
+ *     is the same binding rule the domain tables have, expressed as an absent
+ *     parameter rather than as a convention.
  *   - **Multi-household reasoning.** A user belongs to exactly one household, so
  *     "their role" and "their role in this household" coincide and `actor.role`
  *     is a complete answer. If membership ever becomes many-to-many, every

@@ -15,8 +15,8 @@ import { households } from "./households.js";
 import { users } from "./auth.js";
 import { categories } from "./categories.js";
 
-// The inventory module. See ./index.ts for the domain-wide notes on how this
-// diverges from PRD §6 and why quantities are integers.
+// The inventory module (PRD §2.5.1). See ./index.ts for the domain-wide notes
+// on where the reorder columns live and why quantities are integers.
 //
 // THIS MODULE MUST NOT IMPORT ./mandates.js. Decision D1: inventory has no
 // knowledge of reordering, and the dependency points one way — mandates reads
@@ -24,12 +24,14 @@ import { categories } from "./categories.js";
 //
 // It DOES import ./auth.js, and it is the only domain module that may. The rule
 // is not "no domain table names a user" but "no domain table takes its SCOPE
-// from one": `household_id` is what every query filters on, and the user
-// columns below are attribution and visibility, which PRD §2.2.9 puts on the
-// item itself. Both are nullable FKs onto `users`, never the row's owner.
+// from one": `household_id` is what every query filters on, and the two columns
+// below are attribution and visibility, which PRD §2.2.9 puts on the item
+// itself. Neither is ownership — `added_by_user_id` is a NOT NULL FK onto
+// `users` recording who added the row, and `is_private` is a boolean, not an FK
+// at all.
 
 // EVERY tracked thing, in its complete form — a carton of eggs and a paperback
-// are both whole rows here. Deliberately carries nothing about reordering (D1):
+// are both whole rows here. Deliberately carries nothing about reordering:
 // "is this reorderable?" is answered by the existence of a `mandates` row, one
 // FK the database enforces, not by a nullable-column convention every consumer
 // has to remember.
@@ -83,15 +85,18 @@ export const inventoryItems = pgTable(
     // because an item nobody can see has no audience and no remaining member —
     // not even an admin — could read or remove it.
     isPrivate: boolean("is_private").notNull().default(false),
-    // Free text by the same test `categories` passes: nothing joins on a unit,
-    // so drift never escapes the row. See DB_CONTEXT.md → conventions.
+    // Free text by the same test `categories` fails: nothing joins, groups or
+    // totals on a unit, so drift never escapes the row it was typed into.
     unit: text("unit"),
     // "How many do I have" — universal, so it lives on the item and not on the
     // reorder side: you can own 1 copy of a book, and NL search filters on it.
     // Null means "tracked, count unknown", which is a legitimate track-only state.
     quantity: integer("quantity"),
     // Genuinely open-ended per item type (author/edition/isbn, model number);
-    // feeds NL search rather than any join. Shape is PRD §12.21, still open.
+    // feeds NL search rather than any join. PRD §2.5.1 requires the field and
+    // deliberately leaves it open-ended, so there is no shape to conform to —
+    // conventions, if any are ever needed, will come from what read recall
+    // actually demands.
     attributes: jsonb("attributes").$type<Record<string, unknown>>(),
     createdAt: createdAt(),
     // Named `last_updated` per the target model, not the `updated_at` the auth

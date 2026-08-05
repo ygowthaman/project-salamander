@@ -81,7 +81,25 @@ export interface HouseholdMember {
   status: HouseholdMemberStatus;
 }
 
-/** One `inventory_items` row as the API serialises it. */
+/**
+ * Which member added an item.
+ *
+ * `name` is resolved server-side to `display_name ?? email`, so there is one
+ * label to render and no fallback rule for this screen to get subtly different
+ * from the members list.
+ */
+export interface ItemAuthor {
+  id: string;
+  name: string;
+}
+
+/**
+ * One `inventory_items` row as the API serialises it.
+ *
+ * No `household_id`: every response is already scoped to the signed-in member's
+ * household, so it would be the same value on every row — and a member who
+ * skipped the household step does not know they have one.
+ */
 export interface InventoryItem {
   id: string;
   category_id: string;
@@ -92,18 +110,29 @@ export interface InventoryItem {
   quantity: number | null;
   /** Open-ended per item type (author/edition/isbn, model number, …). */
   attributes: Record<string, unknown> | null;
+  /** Always present — the column is NOT NULL and a departed member's name survives. */
+  added_by: ItemAuthor;
+  /**
+   * Visible only to the member who added it. Anyone else's private items are
+   * filtered out server-side, so `true` here always means *mine* — render it as
+   * a state the viewer owns and can clear, never as "someone's private item".
+   */
+  is_private: boolean;
   created_at: string;
   /** When the *stock* last moved, which is what the card shows. */
   last_updated: string;
 }
 
-/** The items of one category, as returned by `GET /inventory?groupBy=category`. */
+/** The items of one category, as returned by `GET /inventory/items/grouped`. */
 export interface InventoryCategoryGroup {
   category: { id: string; name: string };
   items: InventoryItem[];
 }
 
+/**
+ * Category is the only grouping the product has, so there is no dimension field
+ * to read — `groups[].category` says what each bucket is.
+ */
 export interface InventoryGrouped {
-  group_by: "category";
   groups: InventoryCategoryGroup[];
 }

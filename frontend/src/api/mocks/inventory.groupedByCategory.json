@@ -1,5 +1,4 @@
 {
-  "group_by": "category",
   "groups": [
     {
       "category": {
@@ -14,6 +13,8 @@
           "unit": "dozen",
           "quantity": 1,
           "attributes": { "brand": "Happy Hens", "size": "large" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-06-02T09:14:00.000Z",
           "last_updated": "2026-07-29T18:02:11.000Z"
         },
@@ -24,6 +25,8 @@
           "unit": "litre",
           "quantity": 2,
           "attributes": null,
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-06-02T09:14:00.000Z",
           "last_updated": "2026-07-30T07:41:52.000Z"
         },
@@ -34,6 +37,8 @@
           "unit": "loaf",
           "quantity": 0,
           "attributes": null,
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-06-11T16:30:00.000Z",
           "last_updated": "2026-07-31T08:12:04.000Z"
         },
@@ -44,6 +49,8 @@
           "unit": "bottle",
           "quantity": 1,
           "attributes": { "origin": "Greece" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-05-21T11:05:00.000Z",
           "last_updated": "2026-07-18T19:20:47.000Z"
         }
@@ -62,6 +69,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "George Orwell", "format": "paperback" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-07-04T21:47:00.000Z",
           "last_updated": "2026-07-04T21:47:00.000Z"
         },
@@ -76,6 +85,8 @@
             "edition": "50th Anniversary",
             "isbn": "9780618640157"
           },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-03-19T13:22:00.000Z",
           "last_updated": "2026-03-19T13:22:00.000Z"
         },
@@ -86,6 +97,8 @@
           "unit": null,
           "quantity": null,
           "attributes": { "author": "Don Norman" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-01-08T10:00:00.000Z",
           "last_updated": "2026-01-08T10:00:00.000Z"
         },
@@ -96,6 +109,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Frank Herbert", "format": "paperback" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2025-09-12T19:05:00.000Z",
           "last_updated": "2025-09-12T19:05:00.000Z"
         },
@@ -106,6 +121,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Ursula K. Le Guin" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2025-10-01T12:20:00.000Z",
           "last_updated": "2025-10-01T12:20:00.000Z"
         },
@@ -116,6 +133,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Daniel Kahneman", "format": "hardcover" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2025-10-18T08:40:00.000Z",
           "last_updated": "2025-10-18T08:40:00.000Z"
         },
@@ -130,6 +149,8 @@
             "edition": "20th Anniversary",
             "isbn": "9780135957059"
           },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2025-11-14T15:55:00.000Z",
           "last_updated": "2026-02-01T10:10:00.000Z"
         },
@@ -140,6 +161,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Yuval Noah Harari" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2025-12-02T20:15:00.000Z",
           "last_updated": "2025-12-02T20:15:00.000Z"
         },
@@ -150,6 +173,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "William Gibson", "format": "paperback" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2025-12-21T17:30:00.000Z",
           "last_updated": "2025-12-21T17:30:00.000Z"
         },
@@ -160,6 +185,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Patrick Rothfuss" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-01-15T11:00:00.000Z",
           "last_updated": "2026-01-15T11:00:00.000Z"
         },
@@ -170,6 +197,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Abelson & Sussman", "edition": "2nd" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-01-22T09:25:00.000Z",
           "last_updated": "2026-01-22T09:25:00.000Z"
         },
@@ -180,6 +209,8 @@
           "unit": null,
           "quantity": null,
           "attributes": { "author": "Ursula K. Le Guin" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-02-03T14:50:00.000Z",
           "last_updated": "2026-02-03T14:50:00.000Z"
         },
@@ -190,6 +221,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Susanna Clarke", "format": "hardcover" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": true,
           "created_at": "2026-02-19T18:05:00.000Z",
           "last_updated": "2026-02-19T18:05:00.000Z"
         },
@@ -200,6 +233,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Ursula K. Le Guin" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-03-02T10:35:00.000Z",
           "last_updated": "2026-03-02T10:35:00.000Z"
         },
@@ -210,6 +245,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Andy Weir" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-03-28T21:10:00.000Z",
           "last_updated": "2026-03-28T21:10:00.000Z"
         },
@@ -220,6 +257,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Liu Cixin", "translator": "Ken Liu" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-04-09T13:45:00.000Z",
           "last_updated": "2026-04-09T13:45:00.000Z"
         },
@@ -230,6 +269,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Martin Fowler", "edition": "2nd" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-04-24T08:00:00.000Z",
           "last_updated": "2026-04-24T08:00:00.000Z"
         },
@@ -240,6 +281,8 @@
           "unit": null,
           "quantity": 2,
           "attributes": { "author": "J. R. R. Tolkien", "format": "paperback" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-05-06T16:25:00.000Z",
           "last_updated": "2026-06-30T09:30:00.000Z"
         },
@@ -250,6 +293,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Haruki Murakami" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": true,
           "created_at": "2026-05-25T19:40:00.000Z",
           "last_updated": "2026-05-25T19:40:00.000Z"
         },
@@ -260,6 +305,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "author": "Douglas Hofstadter", "format": "hardcover" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-06-14T12:15:00.000Z",
           "last_updated": "2026-06-14T12:15:00.000Z"
         }
@@ -278,6 +325,8 @@
           "unit": "bottle",
           "quantity": 3,
           "attributes": null,
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-04-27T08:30:00.000Z",
           "last_updated": "2026-07-12T12:05:33.000Z"
         },
@@ -288,6 +337,8 @@
           "unit": "roll",
           "quantity": 0,
           "attributes": null,
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2026-04-27T08:30:00.000Z",
           "last_updated": "2026-07-31T07:58:19.000Z"
         },
@@ -298,6 +349,8 @@
           "unit": "bulb",
           "quantity": 6,
           "attributes": { "fitting": "E27", "watts": 9 },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": true,
           "created_at": "2026-02-14T17:45:00.000Z",
           "last_updated": "2026-06-03T09:15:00.000Z"
         }
@@ -316,6 +369,8 @@
           "unit": "canister",
           "quantity": 2,
           "attributes": { "size": "230g" },
+          "added_by": { "id": "22222222-2222-4222-8222-222222222222", "name": "sam@example.com" },
+          "is_private": false,
           "created_at": "2026-05-30T14:10:00.000Z",
           "last_updated": "2026-07-06T16:44:02.000Z"
         },
@@ -326,6 +381,8 @@
           "unit": null,
           "quantity": 1,
           "attributes": { "model": "Hubba Hubba NX" },
+          "added_by": { "id": "11111111-1111-4111-8111-111111111111", "name": "Ada Okafor" },
+          "is_private": false,
           "created_at": "2025-11-02T09:00:00.000Z",
           "last_updated": "2025-11-02T09:00:00.000Z"
         }
