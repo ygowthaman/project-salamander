@@ -356,3 +356,155 @@ Emailed links in Salamander therefore behave uniformly: **24 hours, one use, the
 **This flow depends on email delivery, which is not built** — the same SMTP gap that blocks household invitations (§2.2.6). Both are waiting on it.
 
 *TBD: resetting a password on an account that has none.* A Google-only account has no password to forget. Whether "forgot password" on such an address does nothing, or doubles as a way to set a first password by email, is unspecified — and the second reading would make email possession sufficient to gain a password credential on a Google-only account, which interacts with §2.4.2.
+
+### 2.5 Inventory
+
+The inventory is the running record of what the household owns. It is the core of the product (§1): every other module either reads from it or writes to it, and none of them are better than the record underneath them.
+
+**The inventory belongs to the household** (§2.2), never to a user. A member reaches it through their membership, sees their household's items and no others, and takes none of it with them when they leave (§2.2.10).
+
+#### 2.5.1 What an inventory item is
+
+An **item** is one tracked thing. Not only consumables: a carton of eggs, a cartridge of printer ink and a copy of *1984* are all items, and the record has to hold all three without treating any of them as a special case.
+
+An item carries:
+
+- **Name** — mandatory. What the household calls the thing.
+- **Category** — mandatory, and a reference to one of the household's categories (§2.5.2) rather than a typed word.
+- **Quantity** — how much is on hand. Optional, because a household may want to track that it owns a thing without counting it.
+- **Unit** — optional free text: *each*, *litres*, *loaves*. Deliberately free text and deliberately not a record of its own, because nothing in the product groups or totals by unit — an inconsistency between *litres* and *L* stays inside the one row it was typed into and never adds up wrong anywhere.
+- **Attributes** — optional and open-ended: author, edition, ISBN, model number, whatever distinguishes this thing. This is what tells two items with the same name apart, and it is what natural-language reads match against (§2.5.8).
+- **Added by** — which member (§2.2.9). Mandatory, and it does not change afterwards.
+- **Private** — whether the item is visible only to the member who added it (§2.2.9).
+- **Created and last-updated dates.**
+
+**The item record says nothing about buying the thing.** Whether an item is reordered, at what level, and under what constraints is a separate concern that is not written yet. It is kept off the item deliberately: a book and a carton of eggs must both be complete records, and a column that is meaningless for half the rows forces every reader to guess whether an empty value means *not set yet* or *does not apply here* — two different states that one blank cannot distinguish.
+
+#### 2.5.2 Categories
+
+**Every item is in exactly one category, and the categories are the household's own.** They are a set the household names and curates, not a fixed taxonomy the product supplies. A category name is unique within its household, compared case-insensitively — *Books* and *books* are one category, not two.
+
+Categories are records rather than free text on the item because the rest of the product groups by them: statistics slice spend by category (§1.1) and budgets are set against them. As free text, one member writing *groceries* and another writing *grocery* would silently split a total with nothing appearing to be wrong. The same reasoning does not apply to `unit`, which is why that stays free text.
+
+Because items point at the category record and not at its name, **renaming a category is safe** — every item follows it, and no history is rewritten.
+
+*TBD: the category management surface.* Creating, renaming and deleting categories, and what happens to a category that still has items in it, are not specified here. *TBD: whether a new household starts with any categories at all,* or with an empty list the first item has to fill.
+
+#### 2.5.3 Two ways to do everything
+
+There are four operations — **add, read, update, delete** — and each is available two ways: through a **form**, and by **writing a sentence**.
+
+**Neither path is a subset of the other.** Anything that can be done with a form can be done with a sentence, and anything that can be done with a sentence can be done with a form. They are two entrances to the same four operations, not a simple mode and an advanced one.
+
+**Both are permanent.** The sentence is the everyday path, because nobody types numbers into fields to say they are low on eggs, milk and bread. The form is the exact path, because an interpretation can be wrong and the user needs a way to say precisely what they mean and correct what was misread.
+
+**The form path never depends on the LLM.** If the model is slow, misconfigured, or unavailable, the inventory stays fully usable through forms. This is the reason the two paths are not layered — the natural-language path is not a front end onto the forms, so losing it costs convenience and never function.
+
+#### 2.5.4 The form path
+
+Ordinary and unsurprising. A form to add an item, the same form pre-filled to update one, and a delete control on each item. The category is chosen from a picker over the household's own categories rather than typed, so a form submission can never invent one. No interpretation happens anywhere in this path: what is submitted is what is stored.
+
+*The view, update and delete controls already exist in the interface; the natural-language path below is the new work.*
+
+#### 2.5.5 The natural-language path
+
+The user writes what they want in a normal sentence — *"Add 1984 to my books"* — and the system works out what to do with it. The sequence:
+
+1. **The sentence goes to the server.** The client never contacts the LLM.
+2. **The server calls the model with three things:** the user's text as they wrote it, the shape of the JSON object the model must reply with, and the **metadata** it needs to resolve words onto records — the household's categories, and the items in view (§2.5.6).
+3. **The model replies** with either a structured object or a question (§2.5.7).
+4. **The server validates the object** against the same shape it gave the model, and commits it.
+5. **The committed change is pushed to open clients** and the interface updates without a reload (§2.5.10).
+
+**The server owns the exchange with the model, and that is not an implementation detail.** The metadata decides what the model is able to resolve, and the model's answer decides what is written. Both are bound to the household and the member on the server, from the session. A client able to supply its own metadata, or to post a structured object of its own, could read or write another household's inventory — so neither is ever taken from the request.
+
+**The model's output is a proposal, never a write.** It is re-validated on arrival, and an object that fails that check writes nothing. The model is trusted to interpret language, not to decide what is allowed.
+
+#### 2.5.6 What the model is told
+
+The metadata exists so the model can map the user's words onto records that already exist: *books* onto the household's **Books** category, *1984* onto the item the household already has. It carries the household's categories, and the items currently in view with enough of their attributes to tell two similar ones apart.
+
+Three rules bound it, and each is a consequence of a rule established earlier.
+
+**It is scoped to the household.** Only this household's categories and items are ever sent (§2.2).
+
+**It excludes what the asking member cannot see.** Another member's private items are not in the metadata — including when the asker is an admin, who has no privileged view of them (§2.2.9, §2.3.1). Privacy is enforced when the context is assembled, not by instructing the model to keep a secret: a private item that was never sent cannot be named back to the wrong person.
+
+**It never introduces the household to a member who skipped.** Nothing the model is given, and nothing it says back, may mention the household to a member at `skipHousehold: true` (§2.2.3). They do not know they have one, and a clarifying question about *"your household's categories"* is exactly where they would find out.
+
+#### 2.5.7 When the model cannot produce a valid object
+
+Some sentences do not resolve. The user writes *"Add 1984 to my library"*, and **Library** is not one of the categories the model was given.
+
+**The model asks rather than guesses.** It replies with a question — *"Library does not exist as a category. Did you mean Books?"* — the user answers, and the exchange continues until either a valid object is produced or the user gives up on it.
+
+**Ambiguity is asked about because a wrong guess is indistinguishable from a deliberate entry.** Quietly filing *1984* under the nearest-looking category, or creating **Library** because the word appeared, produces an inventory that does not match what the user believes they have — and nothing about the record afterwards reveals that it was a guess. One extra exchange is cheap; a quietly wrong record is not.
+
+**Nothing is written until the exchange resolves.** There is no partial record and no placeholder. A conversation the user abandons leaves the inventory exactly as it was.
+
+**Names are resolved, never invented.** The model may only map the user's words onto records it was given. If *1984* matches nothing the household tracks, that is a question or a plain "nothing tracked" — never a new item conjured to satisfy the sentence.
+
+**This is the only place the model's own words reach the user, and they are confined to clarification.** Results are not composed by the model: a read renders the matching items, and a write renders what was actually stored. The model may say whatever it needs in order to be understood while it is still working out what the user meant, but everything the product *asserts* about the household's stock is rendered by the server from the record.
+
+**The exchange resolves against categories; it never creates one.** The user may push back, and the answer does not change:
+
+- *"Add 1984 to my library"* → *"Library does not exist as a category. Did you mean Books?"*
+- *"No, I mean Library"* → *"Library is not a category yet. It has to be added before an item can go in it."*
+- *"Add the category, then"* → the user is told where to add it, and it is not added here.
+
+Those turns count against the cap below like any others; there is no special allowance for arguing the point, and the exchange fails at ten as it would for any other sentence that does not resolve.
+
+**Where the user is sent is written by the product, not composed by the model.** The model may explain that the category is missing — that is clarification, and §2.5.7 allows it — but directions to a place in the interface are not something to leave to interpretation, for the same reason the ten-turn failure message is server-written.
+
+**Why the interpretation step does not extend the taxonomy.** Categories are the set that statistics and budgets group by (§2.5.2), which is why they are curated records rather than words typed onto items. A taxonomy that grows a word at a time while a sentence is being interpreted is exactly the drift that choice was made to prevent — and an exchange that can create the records it resolves against no longer has a fixed set to resolve against, which is what makes its answers checkable.
+
+**This is a scope decision, not a permanent one.** Creating a category — and metadata generally — from inside the exchange is a thing we intend to allow later. It is simply not in scope now, and a later section may lift this without contradicting anything above it.
+
+**The exchange is capped at ten.** One exchange is one message from the user and one reply from the model, and the tenth is the last. If no valid object has been produced by then, the operation fails: the user is told plainly that it could not be understood, and is pointed at the form as the way to do it (§2.5.4). Nothing is written, the same as for an exchange the user abandons.
+
+**The cap is a ceiling, not a target.** Nearly every sentence resolves on the first reply and an ambiguous one on the second; ten is set where it is because an exchange that has not converged by the tenth turn is not converging, and the remaining outcomes are all bad ones — a user answering the same question repeatedly, a model narrowing on the wrong item, and a cost that climbs with every turn. Failing at a known point is better than any of them.
+
+**Failing this way is not a dead end, which is the point of §2.5.3.** The form does the same four operations exactly, so a user who cannot get a sentence understood is one form away from the thing they were trying to do. This is the case that path exists for, and it is why the two are not layered: the fallback for a failed interpretation cannot itself be an interpretation. The failure message is written by the server, not the model — a model that has just failed ten times to understand the request is not the thing to explain the failure.
+
+**The exchange is ephemeral.** It lives only while the user is in it. It is not stored, it is not resumable, and it does not survive a reload, a navigation away, or a lost connection — any of those end it, and the user starts again with a fresh sentence. A restarted exchange is a new one, with its own count of ten.
+
+**Restarting is cheap, which is what makes this affordable.** Every operation here is small and self-contained — add an item, correct a quantity, remove one thing — so the whole cost of losing an exchange is retyping a sentence. There is nothing half-finished to recover, because nothing is written until the exchange resolves. Persisting the conversation would mean deciding when it expires, what happens if it is resumed after the inventory it was resolving against has changed underneath it, and whether a stale exchange may still commit — real complexity, bought for a user who would rather just type the sentence again.
+
+This is a decision about the **conversation**, not about the record: what a committed write stores about the sentence that produced it is a separate question, and one this section does not settle.
+
+#### 2.5.8 The four operations in a sentence
+
+| Intent | Example | What it produces |
+| --- | --- | --- |
+| **Add** | *"Add 1984 to my books"* | A new item, with **books** resolved to the household's **Books** category |
+| **Read** | *"Do I have 1984?"* | A query. The matching items are shown; nothing is written |
+| **Update** | *"Make my copy of 1984 a special edition"* | A change to that item's attributes |
+| **Delete** | *"Remove 1984 from my books"* | That item is deleted |
+
+**Read is the one that does not write,** which makes it the safest of the four: it needs no confirmation and cannot be wrong in a way that persists. It also has to match loosely — someone asking about *1984* should find the item whether the household stored it as *1984* or *Nineteen Eighty-Four* — so it resolves against attributes as well as names, and says plainly that nothing matches rather than offering the nearest thing it found.
+
+**Update and delete both require certainty about which item is meant.** A sentence that resolves to more than one item is a question, not a choice the model makes on the user's behalf. Delete deserves particular care: a form delete is aimed at a specific row the user was looking at, whereas a sentence is aimed at a description, and the two are not equally precise. *TBD: whether a natural-language delete is confirmed before it happens.*
+
+**One sentence may name several items** — *"low on eggs and milk, out of bread"* is one input and three changes. If any part of it does not resolve, the whole sentence goes into the clarification exchange rather than committing the parts that did: applying half a sentence leaves the user to work out which half landed, which is worse than being asked.
+
+#### 2.5.9 Attribution, privacy, and what each member sees
+
+**Every item records the member who added it** (§2.2.9), taken from the session — the person whose form submission or sentence created it. It is never read from the model's output or from the request body, for the same reason the household scope is not: neither is under the server's control.
+
+**An item can be marked private**, and a private item is visible only to the member who added it — including to admins (§2.3.1). Private items are deleted when their owner is deleted or leaves the household (§2.2.8, §2.2.10); nothing private is ever inherited or carried anywhere.
+
+**A consequence worth stating plainly: counts and totals differ between members, and that is correct.** Every figure the product shows a member is computed over what that member can see, so two people in one household can look at the same inventory and see different numbers whenever one of them holds private items. A single household-wide figure would announce that private items exist and how many there are — which is the thing private is for preventing. There is therefore no household total independent of who is looking at it.
+
+§2.2.9 deferred to this module the question of how private items behave inside inventory. **The visibility rule above is the part inventory settles**: private items count for their owner and for nobody else, everywhere a count is shown. How that rule carries into spending statistics and budgets follows from it, but those modules are not written and the detail belongs to them.
+
+#### 2.5.10 Live updates
+
+A committed change is pushed to open clients so the interface reflects it without a reload — this is what makes a sentence feel like it did something.
+
+**It is pushed to the members who are allowed to see it.** A change to an ordinary item reaches every member of the household with the app open; a change to a private item reaches only its owner. The rule that governs the metadata governs the push, for the same reason and with the same consequence.
+
+**The push is a convenience, not the record.** What is stored is the truth. A client that missed a push is stale rather than wrong, and a reload corrects it. Nothing about a write may depend on the push being delivered, because that would turn a dropped connection into lost data.
+
+#### 2.5.11 What writes to inventory from elsewhere
+
+Bill capture (§1.1) records a purchase and updates the inventory as part of doing so, which makes it a second writer into this module. It is not specified yet. When it is, it is bound by everything above: the same item record, the same attribution to the member who uploaded the bill, and the same rule that nothing is written from an interpretation that did not fully resolve.
