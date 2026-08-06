@@ -2,6 +2,7 @@ import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
+import { request } from "node:http";
 
 const idParams = z.object({
   id: z.string().uuid(),
@@ -35,6 +36,13 @@ const stockBody = z
   .refine((b) => (b.quantity === undefined) !== (b.delta === undefined), {
     message: "Provide exactly one of `quantity` or `delta`",
   });
+
+const interpretBody = z.object({
+  text: z.string().trim().min(1).max(1000),
+  exchange_id: z.string().uuid().optional()
+});
+
+const interpretationFailed = "This could not be understood. Try using a the form instead";
 
 function serialiseItem(item: ItemWithAuthor) {
   return {
@@ -85,15 +93,6 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     return notImplemented(reply, "GET /inventory/items/grouped");
   });
 
-  app.post("/inventory/items", async (request, reply) => {
-    const parsed = createItemBody.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(422).send({ detail: parsed.error.issues });
-    }
-    void request.user;
-    return notImplemented(reply, "POST /inventory/items");
-  });
-
   app.get("/inventory/items/:id", async (request, reply) => {
     const parsed = idParams.safeParse(request.params);
     if (!parsed.success) {
@@ -101,6 +100,38 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     }
     void request.user;
     return notImplemented(reply, "GET /inventory/items/:id");
+  });
+
+  app.post("inventory/interpret", async (request, response) => {
+    const parsed = interpretBody.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return response.code(422).send({ detail: parsed.error.issues });
+    }
+    void request.user;
+    void interpretationFailed;
+    return notImplemented(response, "POST inventory/interpret")
+  })
+
+  app.post("/inventory/item", async (request, reply) => {
+    const parsed = createItemBody.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(422).send({ detail: parsed.error.issues });
+    }
+    void request.user;
+    return notImplemented(reply, "POST /inventory/item");
+  });
+
+  app.post("/inventory/items/:id/stock", async (request, reply) => {
+    const params = idParams.safeParse(request.params);
+    if (!params.success) {
+      return reply.code(422).send({ detail: params.error.issues });
+    }
+    const parsed = stockBody.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(422).send({ detail: parsed.error.issues });
+    }
+    void request.user;
+    return notImplemented(reply, "POST /inventory/items/:id/stock");
   });
 
   app.patch("/inventory/items/:id", async (request, reply) => {
@@ -123,18 +154,5 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     }
     void request.user;
     return notImplemented(reply, "DELETE /inventory/items/:id");
-  });
-
-  app.post("/inventory/items/:id/stock", async (request, reply) => {
-    const params = idParams.safeParse(request.params);
-    if (!params.success) {
-      return reply.code(422).send({ detail: params.error.issues });
-    }
-    const parsed = stockBody.safeParse(request.body ?? {});
-    if (!parsed.success) {
-      return reply.code(422).send({ detail: parsed.error.issues });
-    }
-    void request.user;
-    return notImplemented(reply, "POST /inventory/items/:id/stock");
   });
 };
