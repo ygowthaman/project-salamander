@@ -7,14 +7,12 @@ const idParams = z.object({
   id: z.string().uuid(),
 });
 
-const attributes = z.record(z.unknown());
-
 const createItemBody = z.object({
   name: z.string().trim().min(1).max(200),
   category_id: z.string().uuid(),
   unit: z.string().trim().min(1).max(50).nullish(),
   quantity: z.number().int().min(0).nullish(),
-  attributes: attributes.nullish(),
+  attributes: z.string().trim().min(1).max(500).nullish(),
   is_private: z.boolean().default(false),
 });
 

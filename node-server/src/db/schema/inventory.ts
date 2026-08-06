@@ -1,14 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  boolean,
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createdAt } from "./common.js";
 import { households } from "./households.js";
@@ -32,7 +23,7 @@ export const inventoryItems = pgTable(
     isPrivate: boolean("is_private").notNull().default(false),
     unit: text("unit"),
     quantity: integer("quantity"),
-    attributes: jsonb("attributes").$type<Record<string, unknown>>(),
+    attributes: text("attributes"),
     createdAt: createdAt(),
     lastUpdated: timestamp("last_updated", { withTimezone: true })
       .notNull()

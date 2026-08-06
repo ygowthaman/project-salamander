@@ -58,7 +58,7 @@ CREATE TABLE "inventory_items" (
 	"is_private" boolean DEFAULT false NOT NULL,
 	"unit" text,
 	"quantity" integer,
-	"attributes" jsonb,
+	"attributes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_updated" timestamp with time zone DEFAULT now() NOT NULL
 );

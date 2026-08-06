@@ -115,7 +115,7 @@ export interface NewItem {
   categoryId: string;
   unit?: string | null;
   quantity?: number | null;
-  attributes?: Record<string, unknown> | null;
+  attributes?: string | null;
   isPrivate?: boolean;
 }
 
@@ -149,7 +149,7 @@ export interface ItemPatch {
   categoryId?: string;
   unit?: string | null;
   quantity?: number | null;
-  attributes?: Record<string, unknown> | null;
+  attributes?: string | null;
   isPrivate?: boolean;
 }
 

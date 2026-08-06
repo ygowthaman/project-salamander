@@ -379,7 +379,8 @@ An item carries:
 - **Category** — mandatory, and a reference to one of the household's categories (§2.5.2) rather than a typed word.
 - **Quantity** — how much is on hand. Optional, because a household may want to track that it owns a thing without counting it.
 - **Unit** — optional free text: *each*, *litres*, *loaves*. Deliberately free text and deliberately not a record of its own, because nothing in the product groups or totals by unit — an inconsistency between *litres* and *L* stays inside the one row it was typed into and never adds up wrong anywhere.
-- **Attributes** — optional and open-ended: author, edition, ISBN, model number, whatever distinguishes this thing. This is what tells two items with the same name apart, and it is what natural-language reads match against (§2.5.8).
+- **Attributes** — optional free text: *unabridged version*, *George Orwell, paperback*, *E27 fitting, 9W*. Whatever distinguishes this thing from another of the same name, written as a person would say it. It is one descriptive phrase and not a set of fields, for the same reason `unit` is free text: nothing in the product groups, filters or totals by it. It is read by a person and matched loosely by an interpreter (§2.5.8), and neither of those needs it broken apart — while a fixed set of keys would have to be curated per household the way categories are (§2.5.2), which is a cost the field does not repay.
+  A sentence stores the phrase as written: *"add 1984 unabridged version to books"* records the name *1984* and the attributes *unabridged version*. The interpreter decides where the name stops and the description starts; it does not restructure what the user typed.
 - **Added by** — which member (§2.2.9). Mandatory, and it does not change afterwards.
 - **Private** — whether the item is visible only to the member who added it (§2.2.9).
 - **Created and last-updated dates.**

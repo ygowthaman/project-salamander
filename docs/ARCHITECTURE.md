@@ -71,8 +71,11 @@ Architectural consequences, which run through everything below:
 
 - **No durable conversation state** — no messages table, no chat session, no
   history replay. An exchange lives in memory for the length of one
-  interpretation and is dropped when it ends, so the backend stays stateless for
-  correctness and needs no session affinity.
+  interpretation and is dropped when it ends, so a lost exchange takes nothing
+  with it that was ever written. It does mean a follow-up turn has to reach the
+  instance holding it: session affinity is a requirement of the exchange, not of
+  correctness (see
+  [The interpretation exchange](#the-interpretation-exchange)).
 - **No token streaming** — responses are awaited whole and validated before use.
 - **The WebSocket carries data, not tokens** — it is a push channel for row
   changes (see [The push channel](#the-push-channel)).
@@ -369,7 +372,7 @@ inventory_items                         -- every tracked thing, in its complete 
   is_private       BOOLEAN NOT NULL DEFAULT false                -- visibility
   unit             TEXT                 -- free text, deliberately
   quantity         INTEGER              -- NULL = "tracked, count unknown"
-  attributes       JSONB                -- author/edition/isbn, model number
+  attributes       TEXT                 -- free text: "unabridged version", "E27 fitting"
   created_at, last_updated
 
 mandates                                -- the reorder opt-in; NOT the inventory module
@@ -411,14 +414,14 @@ The conventions these tables set, which any new table should follow:
   it by convention.** `mandates` is the worked example. Split when a column is
   *inapplicable* to some rows; do **not** split merely because it is *unset* on
   some rows.
-- **`jsonb` only for genuinely open-ended fields** (item `attributes`, fallback
-  decisions, notification payloads) — validated with zod at the boundary. Things
-  that get queried or constrained are real columns.
+- **`jsonb` only for genuinely open-ended fields** (mandate trigger conditions
+  and preferred products, notification payloads) — validated with zod at the
+  boundary. Things that get queried or constrained are real columns.
 - **Anything the app groups by is a table, not a string.** `category` is the
   worked example: statistics and budgets aggregate by it, so as free text an
   interpreter writing `grocery` then `groceries` would silently split a total
-  rather than erroring. `unit` stays free text under the same test — nothing
-  groups by it, and drift there never leaves the row.
+  rather than erroring. `unit` and `attributes` stay free text under the same
+  test — nothing groups by either, and drift there never leaves the row.
 
 Schema lives in `db/schema/`; the generated SQL lives in `node-server/drizzle/`.
 Migrations are files applied by `migrate.ts` on startup — replacing any "create
@@ -506,10 +509,14 @@ natural-language input in the product runs through it:
                             and shows what it did
 ```
 
-Three properties of the loop are load-bearing:
+Four properties of the loop are load-bearing:
 
 - **It is capped at ten and ephemeral.** In-memory only; a reload ends it. If you
   reach for a table to hold it, you are building a chat app.
+- **It lives in one instance's memory.** Every turn must reach the instance that
+  opened the exchange, and an abandoned one is reaped on a timer — a reload sends
+  no signal to end it. The turn counter is server-side for the same reason the
+  metadata is: a client-supplied budget is not a budget.
 - **Nothing partial commits.** One sentence may name several items; if any part
   fails to resolve, the whole sentence re-enters the exchange rather than
   committing the parts that did.

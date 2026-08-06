@@ -155,7 +155,8 @@ done
 
 `--network`/`--subnet` turn on Direct VPC egress; `--vpc-egress=private-ranges-only`
 sends only RFC-1918 traffic (the VM) through the VPC, so Anthropic API calls
-still go out the normal path. The three WebSocket flags are from `ARCHITECTURE.md`.
+still go out the normal path. `--session-affinity`, `--timeout=3600` and
+`--min-instances=1` are from `ARCHITECTURE.md`.
 
 ```bash
 gcloud run deploy salamander-server \
@@ -184,6 +185,13 @@ gcloud run deploy salamander-server \
 > commas to separate *different* env vars — so an unescaped value fails with
 > `Bad syntax for dict arg`. The `^##^` prefix switches the delimiter to `##` for
 > this flag so the comma inside the value is left alone.
+
+> **`--session-affinity` is load-bearing twice over.** It pins a WebSocket to one
+> instance, and it keeps each turn of an interpretation exchange arriving at the
+> instance holding that exchange — those turns live in that instance's memory and
+> nowhere else. Affinity here is best effort, so a scale-down or a new revision
+> can still strand an exchange: the user is told to start again and nothing is
+> written. Dropping the flag turns that from rare into routine.
 
 The container runs pending migrations on boot, so the **DB must be reachable
 before this deploy** — if it isn't, the container exits and the deploy fails its

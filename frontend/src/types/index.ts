@@ -52,7 +52,7 @@ export interface InventoryItem {
   name: string;
   unit: string | null;
   quantity: number | null;
-  attributes: Record<string, unknown> | null;
+  attributes: string | null;
   added_by: ItemAuthor;
   is_private: boolean;
   created_at: string;
