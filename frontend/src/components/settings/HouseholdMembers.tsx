@@ -21,7 +21,6 @@ import { useCallback, useEffect, useState, FormEvent } from "react";
 import { listMembers, removeMember, setMemberRole } from "../../api/households";
 import { HouseholdMember } from "../../types";
 
-/** Caught before a round-trip; the server validates properly. */
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ROLE_LABEL: Record<HouseholdMember["role"], string> = {
@@ -29,28 +28,10 @@ const ROLE_LABEL: Record<HouseholdMember["role"], string> = {
   user: "Member",
 };
 
-/**
- * Membership: who is in the household, what they may do, and how someone else
- * gets in. Rendered only for admins — those are exactly the powers the role
- * carries, and the server refuses all three from anyone else regardless.
- *
- * **Inviting does not work yet and the form says so.** It needs a table of its
- * own (a household, an invited email, a single-use token, a 24-hour expiry) and
- * an email to send, and Salamander has no SMTP configured. The form is here so
- * the shape of the screen is settled — one field, no role picker — but it makes
- * no request, because there is no endpoint behind it and a button that 404s is
- * worse than one that explains itself.
- *
- * **There is no role picker on the invite, deliberately.** Admin is conferred by
- * creating a household, and afterwards only by an existing admin granting it, so
- * everyone who joins by invitation joins as a member and is promoted here
- * afterwards if that is what is wanted.
- */
 export function HouseholdMembers() {
   const [members, setMembers] = useState<HouseholdMember[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  /** The row a request is in flight for, so only that row shows as busy. */
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<HouseholdMember | null>(null);
 
@@ -99,8 +80,6 @@ export function HouseholdMembers() {
         current ? current.map((m) => (m.id === updated.id ? updated : m)) : current,
       );
     } catch (error) {
-      // The one refusal the server makes here is demoting the last admin, and
-      // its message says so — surface it rather than a generic failure.
       setActionError(error instanceof Error ? error.message : "Could not change that role.");
     } finally {
       setPendingId(null);
@@ -160,7 +139,6 @@ export function HouseholdMembers() {
             error={inviteError}
             maxLength={320}
           />
-          {/* Aligned to the input's box rather than its label. */}
           <Button type="submit" mt={25} leftSection={<IconMail size={16} stroke={1.6} />}>
             Send invitation
           </Button>
@@ -227,15 +205,6 @@ export function HouseholdMembers() {
         size="md"
       >
         <Stack gap="md">
-          {/* Says what removal actually costs, because most of it is nothing:
-              the only thing destroyed is what nobody else could see anyway.
-
-              Where they land is not described. A removed member is put into a
-              household of their own with `skip_household` back to true, which
-              is the state where the concept is hidden from them entirely —
-              from their side they simply have their own stuff again. Naming it
-              here would put a mechanism in front of the admin that the person
-              it happens to will never see. */}
           <Text size="sm">
             {confirmRemove?.display_name ?? confirmRemove?.email} keeps their account and starts
             fresh with an empty inventory. Everything they added here stays — except the items they
@@ -270,13 +239,7 @@ function MemberRow({ member, busy, disabled, onChangeRole, onRemove }: MemberRow
   const joined = member.status === "active";
   const name = member.display_name ?? member.email;
 
-  // A role belongs to someone who is actually in the household. Until an invited
-  // person accepts, there is no membership to promote and no account to carry
-  // the role, so the control waits for them.
   const roleReason = !joined ? "Available once they have accepted and joined." : null;
-  // Removing yourself is a different operation — leaving, which can dissolve the
-  // household when you are its last admin and so is deliberately not reachable
-  // from a row action in a table.
   const removeReason = member.is_self ? "Leave the household from your own account instead." : null;
 
   return (
@@ -323,7 +286,6 @@ function MemberRow({ member, busy, disabled, onChangeRole, onRemove }: MemberRow
           <Menu position="bottom-end" shadow="md" withinPortal disabled={!joined || disabled}>
             <Menu.Target>
               <Tooltip label={roleReason ?? "Change role"} withArrow>
-                {/* Wrapped so the tooltip still fires on a disabled control. */}
                 <span>
                   <ActionIcon
                     variant="subtle"

@@ -4,7 +4,6 @@ import { ReactNode } from "react";
 import { InventoryPage } from "../inventory/InventoryPage";
 import { SettingsPage } from "../settings/SettingsPage";
 
-/** Every destination the header can switch the viewport to. */
 export type View = "inventory" | "schedules" | "cart" | "settings";
 
 function Placeholder({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
@@ -43,7 +42,6 @@ export function CartView() {
   );
 }
 
-/** Maps the active view onto the component that fills the viewport below the header. */
 export function ViewBody({ view }: { view: View }) {
   switch (view) {
     case "inventory":

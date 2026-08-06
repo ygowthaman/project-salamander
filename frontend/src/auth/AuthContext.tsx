@@ -3,19 +3,8 @@ import * as authApi from "../api/auth";
 import { User } from "../types";
 import { AuthContext, AuthStatus } from "./useAuth";
 
-/**
- * Google's half of "this request created the account".
- *
- * The callback leg is a redirect, not a JSON reply, so the server reports it as
- * `?new_account=1` on the URL it sends the browser back to. Read once at module
- * load and stripped from the address bar immediately: leaving it there would
- * re-open the household form on every refresh, and the question is meant to be
- * asked exactly once.
- *
- * At module scope rather than in a state initialiser or an effect because it
- * mutates history — under StrictMode both of those run twice in development,
- * and this must not.
- */
+// Module scope, not an effect or state initialiser: this rewrites history, and
+// StrictMode runs both of those twice.
 const CREATED_VIA_OAUTH = consumeNewAccountParam();
 
 function consumeNewAccountParam(): boolean {
@@ -37,9 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [promptHousehold, setPromptHousehold] = useState(false);
 
-  // Bootstrap from the cookie. This is also what mints the CSRF cookie for the
-  // login form: the server sets it on any request that arrives without one, so
-  // this GET has to happen before the first mutation.
+  // Also mints the CSRF cookie the login form needs, so it must precede any
+  // mutation.
   useEffect(() => {
     let cancelled = false;
     authApi
@@ -48,9 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setUser(me);
         setStatus("authenticated");
-        // Only now, because the redirect flag alone proves nothing: if the
-        // cookie did not resolve to a user we are on the login screen, and the
-        // flag must not survive to greet whoever signs in next.
         setPromptHousehold(CREATED_VIA_OAUTH);
       })
       .catch(() => {
@@ -66,9 +51,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     setUser(await authApi.login(email, password));
     setStatus("authenticated");
-    // An existing account, by definition. Clearing rather than leaving it alone
-    // covers the case where a stale OAuth flag is still set from a callback that
-    // did not sign anyone in.
     setPromptHousehold(false);
   }, []);
 
@@ -83,8 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await authApi.logout();
     } finally {
-      // Drop local state even if the request failed — the cookies are gone or
-      // unusable either way, and leaving a stale user on screen is worse.
       setUser(null);
       setStatus("anonymous");
       setPromptHousehold(false);

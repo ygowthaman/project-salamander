@@ -19,22 +19,6 @@ import { HouseholdSetupModal } from "../household/HouseholdSetupModal";
 import { HouseholdDangerZone, type DepartureKind } from "./HouseholdDangerZone";
 import { HouseholdMembers } from "./HouseholdMembers";
 
-/**
- * The Household section of Settings.
- *
- * Three shapes, decided by two facts about the caller:
- *
- *   - **`skip_household` is true** — they were given a household silently and do
- *     not know it exists. They get an invitation to create one and *nothing
- *     else*: no name, no address, no member list. Showing any of it would mean
- *     showing a household they never chose, named after their email address,
- *     which is the one thing that flag exists to prevent. Nothing is fetched
- *     either, so the name cannot leak through a loading state.
- *   - **Any member** — the household's name and address, both editable. Renaming
- *     is not an admin power: the role governs who is in the household and
- *     whether it continues to exist, and neither of those is a name.
- *   - **Admins** — additionally the member list and the invite form, below.
- */
 export function HouseholdSettings() {
   const { user } = useAuth();
   const skipped = user?.skip_household ?? false;
@@ -42,12 +26,6 @@ export function HouseholdSettings() {
   const [detail, setDetail] = useState<HouseholdDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  /**
-   * Set once a departure completes — leaving, or deleting the household outright.
-   * Both flip `skip_household` back to true, so this section immediately
-   * re-renders as the create prompt, which on its own would look like the
-   * household simply vanished. This is what says otherwise.
-   */
   const [departure, setDeparture] = useState<{ from: string; kind: DepartureKind } | null>(null);
 
   const [name, setName] = useState("");
@@ -74,8 +52,6 @@ export function HouseholdSettings() {
     }
   }, [skipped]);
 
-  // Re-runs when `skipped` flips, which is what swaps the create prompt for the
-  // real form the moment the setup modal succeeds.
   useEffect(() => {
     void load();
   }, [load]);
@@ -84,9 +60,6 @@ export function HouseholdSettings() {
     e.preventDefault();
     if (busy) return;
 
-    // Mirrors the server's rule so an all-whitespace name is caught before a
-    // round-trip. A household always has a name — it is what every list and
-    // header calls the scope, so there is no null to render around.
     const trimmed = name.trim();
     if (!trimmed) {
       setNameError("Give your household a name");
@@ -113,12 +86,6 @@ export function HouseholdSettings() {
   if (skipped) {
     return (
       <Stack gap="lg">
-        {/* Says what left them, never where they landed. A departing member is
-            put into a household of their own with `skip_household` back to
-            true, and that is exactly the state in which the concept is hidden:
-            telling them about it here would introduce a household at the moment
-            they stopped having one they knew about. From their side they are
-            simply an individual user again, starting empty. */}
         {departure && (
           <Alert color="green" variant="light" icon={<IconCheck size={18} />} role="status">
             {departure.kind === "deleted"
@@ -223,16 +190,8 @@ export function HouseholdSettings() {
         </form>
       </Paper>
 
-      {/* Membership is the admin's business: inviting, removing and changing
-          roles are the powers the role actually carries. A plain member sees the
-          household's name and address above and nothing below. The server
-          enforces the same split — this only decides what is worth rendering. */}
       {detail.role === "admin" && <HouseholdMembers />}
 
-      {/* Leaving is open to both roles; deleting the household is gated to
-          admins inside. Both carry the warnings the PRD requires in front of
-          them, because the last-admin case turns "remove me" into "destroy
-          this for everyone" without saying so. */}
       <HouseholdDangerZone
         detail={detail}
         onDeparted={(kind) => setDeparture({ from: detail.name, kind })}

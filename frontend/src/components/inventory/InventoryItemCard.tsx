@@ -14,14 +14,9 @@ import { useMemo, useState } from "react";
 import { InventoryItem } from "../../types";
 import classes from "./InventoryItemCard.module.css";
 
-/**
- * About four item rows before the list starts scrolling. Chosen so a card with
- * one item and a card with fifty end up the same height in the grid.
- */
 const ITEM_LIST_MAX_HEIGHT = 280;
 
 interface InventoryItemCardProps {
-  /** The category this card is the whole of — one card per group. */
   category: string;
   items: InventoryItem[];
   onView?: (item: InventoryItem) => void;
@@ -29,12 +24,6 @@ interface InventoryItemCardProps {
   onDelete?: (item: InventoryItem) => void;
 }
 
-/**
- * One category's items. The search box filters *within* the card and nothing
- * else: it is a way to find a row in a long collection, not the app's
- * natural-language inventory search, which is a separate interpreted call whose
- * results are their own list.
- */
 export function InventoryItemCard({
   category,
   items,
@@ -52,8 +41,6 @@ export function InventoryItemCard({
 
   return (
     <Card withBorder p="lg" radius="md" className={classes.card}>
-      {/* Category Name, then the search bar full-width beneath it — the card is
-          one column of a three-up grid, so the two cannot share a row. */}
       <Stack gap="sm" mb="md">
         <Group gap="xs" wrap="nowrap">
           <Text fw={600} size="lg" truncate className={classes.category} c="var(--salamander-green-light)">
@@ -76,15 +63,6 @@ export function InventoryItemCard({
         />
       </Stack>
 
-      {/* Capped, not free-growing: an auto-height CSS grid row takes the height
-          of its tallest card and stretches the rest to match, so one 20-item
-          category would leave its two neighbours as near-empty boxes and push
-          the next row of categories off screen. `type="auto"` keeps the bar
-          visible whenever it overflows rather than only on hover.
-
-          `scrollbars="y"` because a row never scrolls sideways — a long item
-          name truncates instead. `offsetScrollbars="y"` reserves the bar's
-          width so it sits beside the row actions rather than over them. */}
       <ScrollArea.Autosize
         mah={ITEM_LIST_MAX_HEIGHT}
         type="auto"
@@ -93,7 +71,6 @@ export function InventoryItemCard({
         classNames={{ content: classes.content }}
       >
         <Stack gap={0}>
-          {/* For each item => Item name <space-between> view/edit/delete buttons*/}
           {visible.map((item) => (
             <Group
               key={item.id}
@@ -159,11 +136,6 @@ export function InventoryItemCard({
   );
 }
 
-/**
- * `quantity: null` is "tracked, count unknown" — a legitimate state the schema
- * allows on purpose, so it must not render as 0. The unit is free text and
- * optional, hence the two-part join rather than a template.
- */
 function stockLabel(item: InventoryItem): string {
   if (item.quantity === null) return item.unit ? `Count unknown · ${item.unit}` : "Count unknown";
   if (item.quantity === 0) return item.unit ? `Out of stock · 0 ${item.unit}` : "Out of stock";

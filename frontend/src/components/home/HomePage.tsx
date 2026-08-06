@@ -5,23 +5,11 @@ import { HouseholdSetupModal } from "../household/HouseholdSetupModal";
 import { AppHeader } from "./AppHeader";
 import { View, ViewBody } from "./views";
 
-/**
- * The signed-in shell — where a user lands straight after logging in.
- *
- * AppShell.Header is fixed, so the brand, module tabs, cart and menu stay on
- * screen no matter what; only AppShell.Main swaps as the view changes. There is
- * no router yet, so the active view is plain local state — swap this for route
- * params when one lands.
- */
 export function HomePage() {
   const { user, signOut, promptHousehold, dismissHouseholdPrompt } = useAuth();
   const [view, setView] = useState<View>("inventory");
 
   return (
-    // The marker index.css keys the background watermark off, so it shows
-    // behind the signed-in views but never on the login screen.
-    // Header height tracks the logo in AppHeader.module.css — 50px mark plus
-    // 5px clearance top and bottom.
     <AppShell header={{ height: 60 }} padding="md" data-app-surface="shell">
       <AppShell.Header>
         <AppHeader
@@ -36,10 +24,6 @@ export function HomePage() {
         <ViewBody view={view} />
       </AppShell.Main>
 
-      {/* Renders nothing until the account is brand new. Mounted here rather
-          than in the Gate so it appears over the app the user has landed in,
-          which is what makes skipping feel like dismissing an optional step
-          rather than clearing a barrier to entry. */}
       <HouseholdSetupModal
         opened={promptHousehold}
         onClose={dismissHouseholdPrompt}

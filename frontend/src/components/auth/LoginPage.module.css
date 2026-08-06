@@ -1,6 +1,3 @@
-/* Layout only — the wordmark's own face, size and colour come from
-   `Wordmark.module.css` and are the same on both screens. The card centres its
-   logo and its subtitle, so the title between them centres too. */
 .title {
   text-align: center;
 }

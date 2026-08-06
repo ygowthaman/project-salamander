@@ -1,70 +1,33 @@
-/* Mantine's styles.css carries the reset and every component's styling, so this
-   file only needs what a full-height AppShell depends on. */
 html,
 body,
 #root {
   height: 100%;
 }
 
-/* Brand greens, lifted straight off the logo mark (`assets/simple_logo.svg`) —
-   all three the mark actually uses: the lime on the body, the mid green on the
-   head and tail, and the dark green on the small detail paths.
-
-   Green is the *only* ramp: it is `primaryColor` in `theme.ts`, so every button
-   and interactive control already paints itself green without touching these
-   variables. They exist for the places CSS has to say it directly —
-   `--salamander-green` sets the wordmark.
-
-   With one hue, the roles separate by *step* rather than by colour. The light
-   lime is the accent — active nav item, its underline, section headers — and it
-   reads as "you are here" because it is brighter than the mid green the fills
-   use, not because it is a different hue. Mid is hover, deep is the pressed end.
-
-   These stay in sync by hand with the `salamander` palette in `theme.ts`:
-   shade 6 there is `--salamander-green`, shade 9 is `--salamander-green-deep`.
-   Change one, change the other. */
+/* --salamander-green and --salamander-green-deep duplicate shades 6 and 9 of the
+   `salamander` palette in theme.ts; change one and change the other. */
 :root {
   --salamander-green-light: #bfb944;
   --salamander-green: #40a04b;
   --salamander-green-deep: #1d6d33;
 }
 
-/* Watermark. One fixed layer on the body rather than a per-page element, so
-   every signed-in view gets it without having to opt in. Fixed, not scrolling,
-   so a long inventory list slides over a stationary mark.
-
-   Scoped by `:has()` to the marker HomePage puts on its AppShell, which keeps
-   the login screen (and the auth spinner) clear while leaving the whole rule in
-   one place — the alternative, a layer inside HomePage, would need AppShell.Main
-   lifted out of the watermark's way as well. */
 body:has([data-app-surface="shell"])::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
-  /* Never swallow a click meant for the form or the header behind it. */
   pointer-events: none;
-  /* background-image: url("./assets/logo.svg"); */
   background-repeat: no-repeat;
   background-position: center;
-  /* The mark is square, so vmin fills 90% of the shorter viewport edge and it
-     stays fully visible whichever way the window is shaped. Deliberately
-     uncapped — it is meant to scale with the screen. */
   background-size: 90vmin;
-  /* The app is locked to dark, so this is the value that matters. Kept low
-     because at this size the mark sits under most of the content. */
   opacity: 0.045;
 }
 
 [data-mantine-color-scheme="light"] body:has([data-app-surface="shell"])::before {
-  /* The mark's mid greens contrast harder against white than against near-black,
-     so light needs a fainter setting to read as equally subtle. */
   opacity: 0.03;
 }
 
-/* The watermark is positioned, so it would paint over the AppShell's static
-   content without this. Portalled overlays (menus, modals) mount outside #root
-   at their own higher z-index and are unaffected. */
 #root {
   position: relative;
   z-index: 1;

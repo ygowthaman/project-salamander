@@ -1,5 +1,4 @@
-// Must precede the ./client.js import — it reads DATABASE_URL at module load.
-// server.ts loads dotenv itself; this covers the standalone `npm run db:migrate`.
+// Must precede ./client.js, which reads DATABASE_URL at module load.
 import "dotenv/config";
 
 import { fileURLToPath } from "node:url";
@@ -9,30 +8,12 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "./client.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// src/db -> node-server/drizzle (and dist/db -> node-server/drizzle)
 const migrationsFolder = path.resolve(here, "../../drizzle");
 
 export async function runMigrations(): Promise<void> {
   await migrate(db, { migrationsFolder });
 }
 
-/**
- * Drops every table in `public` plus drizzle's own bookkeeping schema, so the
- * next `runMigrations()` replays the whole chain from empty.
- *
- * Dev-only, and destructive by design: the migrator keys on a hash of each SQL
- * file, so editing a migration that a database has already applied leaves that
- * database permanently unable to migrate (the rewritten file reads as pending
- * and re-runs against tables that exist — `relation "…" already exists`).
- * While the schema is still being drafted that is the normal case, and a wipe
- * is cheaper than hand-writing the catch-up DDL. It is NOT called from
- * `server.ts`; only the CLI below reaches it, only under `--reset`.
- *
- * Enum types go too — `user_role` is the one that exists, and a leftover type
- * is exactly the kind of orphan that would make a "clean" rebuild fail later:
- * `DROP TABLE users` does not take the enum its `role` column used with it, so
- * the replayed migration would hit `type "user_role" already exists`.
- */
 export async function resetSchema(): Promise<void> {
   await db.execute(sql`
     DO $$
@@ -50,12 +31,9 @@ export async function resetSchema(): Promise<void> {
       END LOOP;
     END $$;
   `);
-  // Drizzle records applied migrations in drizzle.__drizzle_migrations, outside
-  // `public` — left behind, it would mark the just-dropped tables as created.
   await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`);
 }
 
-/** `host/database` from DATABASE_URL, for the pre-drop log line. */
 function targetLabel(): string {
   try {
     const u = new URL(process.env.DATABASE_URL!);
@@ -65,11 +43,9 @@ function targetLabel(): string {
   }
 }
 
-// Allow `npm run db:migrate` to apply migrations standalone.
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const reset = process.argv.includes("--reset");
   if (reset) {
-    // The one hard stop. Everything else about this script assumes dev.
     if (process.env.NODE_ENV === "production") {
       console.error("refusing to --reset with NODE_ENV=production");
       process.exit(1);

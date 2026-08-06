@@ -1,8 +1,6 @@
 export default {
   plugins: {
     "postcss-preset-mantine": {},
-    // Mantine's own stylesheets reference these names; defining them here means
-    // our CSS modules can use the same breakpoints without redeclaring them.
     "postcss-simple-vars": {
       variables: {
         "mantine-breakpoint-xs": "36em",

@@ -1,14 +1,5 @@
-/* The one place in the app that is not Montserrat. Lexend Giga is an extended
-   face and is left at its natural tracking — the width is the wordmark's whole
-   character, so nothing here tightens it.
-
-   The 700 file is imported in `main.tsx`. Asking for a weight that is not
-   imported gets a synthesised one, so the two have to move together.
-
-   24px is sized against the app header, the tighter of the two homes: a 50px
-   mark inside a 60px bar, where the wordmark should read as the title without
-   outgrowing the mark beside it. The login card is roomier and takes the same
-   size for free. */
+/* The 700 file is imported in main.tsx; an unimported weight gets synthesised,
+   so the two have to move together. */
 .wordmark {
   font-family: "Lexend Giga", var(--mantine-font-family);
   font-size: 1.5rem;
@@ -16,7 +7,5 @@
   line-height: 1.2;
   white-space: nowrap;
   color: var(--salamander-green);
-  /* Rendered as a heading, so the browser's heading margins would otherwise
-     apply and the two screens would each have to cancel them. */
   margin: 0;
 }

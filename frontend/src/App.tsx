@@ -7,8 +7,6 @@ import { HomePage } from "./components/home/HomePage";
 function Gate() {
   const { status } = useAuth();
 
-  // Render nothing decisive until the cookie has been checked — showing the
-  // login form first would flash it at users who are already signed in.
   if (status === "loading") {
     return (
       <Center h="100%">

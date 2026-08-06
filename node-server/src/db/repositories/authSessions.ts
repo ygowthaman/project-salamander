@@ -25,11 +25,8 @@ export async function createAuthSession(
   return row!;
 }
 
-/**
- * Returns the row even when revoked or expired — the refresh route needs to
- * tell "unknown token" apart from "already-used token", because the latter is
- * a replay signal that revokes the whole family.
- */
+// Returns revoked and expired rows too: the refresh route has to tell an
+// unknown token apart from a replayed one.
 export async function getByRefreshHash(
   db: DbExecutor,
   refreshTokenHash: string,
@@ -49,11 +46,6 @@ export async function revoke(db: DbExecutor, id: string): Promise<void> {
   await db.update(authSessions).set({ revokedAt: new Date() }).where(eq(authSessions.id, id));
 }
 
-/**
- * Revokes every still-live session for a user. `exceptId` keeps the caller's
- * own session alive, which is what a password change wants: log out other
- * devices without logging out the device performing the change.
- */
 export async function revokeAllForUser(
   db: DbExecutor,
   userId: string,

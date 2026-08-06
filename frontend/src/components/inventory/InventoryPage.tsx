@@ -18,23 +18,8 @@ import { InventoryCategoryGroup } from "../../types";
 import { InventoryItemCard } from "./InventoryItemCard";
 import classes from "./InventoryPage.module.css";
 
-/**
- * Three category cards per line, which is the layout the page is designed
- * around. It steps down rather than squeezing: below `lg` a third column leaves
- * each card too narrow for an item name beside its three row actions.
- */
 const COLUMNS = { base: 1, sm: 2, lg: 3 };
 
-/**
- * The inventory landing page: one input the user types a sentence into, and
- * everything they own underneath it, one card per category.
- *
- * The input is not a chat box — it is the interpreted surface for this module.
- * A sentence goes out, a committed diff comes back, and the field clears; there
- * is no transcript because there is no conversation to keep.
- *
- * Both calls are mocked in `api/inventory.ts` until the routes exist.
- */
 export function InventoryPage() {
   const [groups, setGroups] = useState<InventoryCategoryGroup[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -66,12 +51,8 @@ export function InventoryPage() {
     setReceipt(null);
     try {
       const result = await interpretInventoryText(sentence);
-      // Cleared only on success, so a failed call leaves the user's sentence
-      // where they can retry or amend it.
       setText("");
       setReceipt(result.summary);
-      // Direct commit: the write already happened, so the list is now stale.
-      // This re-fetch is what the WebSocket push will replace.
       await load();
     } catch (error) {
       setReceipt(error instanceof Error ? error.message : "That could not be applied.");
@@ -81,14 +62,9 @@ export function InventoryPage() {
   }
 
   return (
-    // `xl` rather than `lg`: three columns inside a 975px container leaves each
-    // card too tight for a name beside its actions.
     <Container size="xl" className={classes.page}>
-      {/* Fixed head: the title and the input stay put while the cards scroll
-          under them, so the interpreted surface is always reachable. */}
       <Stack gap="lg" pb="md">
         <div>
-          {/* <Title order={2} c="var(--salamander-green-light)">Inventory</Title> */}
           <Text size="sm" c="dimmed">
             What you own, and how much of it is left.
           </Text>
@@ -98,8 +74,6 @@ export function InventoryPage() {
           <Textarea
             value={text}
             onChange={(event) => setText(event.currentTarget.value)}
-            // Enter alone would fight the multi-line field; the modifier is the
-            // conventional "send" for a textarea.
             onKeyDown={(event) => {
               if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
@@ -130,9 +104,6 @@ export function InventoryPage() {
         </Paper>
       </Stack>
 
-      {/* The only scrolling region on the page. `scrollbars="y"` because the
-          grid never exceeds the container's width — it drops to fewer columns
-          instead. */}
       <ScrollArea
         className={classes.scroll}
         classNames={{ content: classes.scrollContent }}
@@ -174,8 +145,6 @@ export function InventoryPage() {
         {groups && groups.length > 0 && (
           <SimpleGrid cols={COLUMNS} spacing="md" verticalSpacing="md">
             {groups.map((group) => (
-              // Row actions land with the precise-edit routes; the card takes
-              // them as optional props so the buttons are already in place.
               <InventoryItemCard
                 key={group.category.id}
                 category={group.category.name}

@@ -9,8 +9,6 @@ const JWKS_URI = "https://www.googleapis.com/oauth2/v3/certs";
 // Google still issues both spellings of the issuer claim.
 const ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
 
-// Module-level so the JWKS is fetched once and cached across requests rather
-// than on every sign-in.
 const jwks = createRemoteJWKSet(new URL(JWKS_URI));
 
 export class GoogleAuthError extends Error {}
@@ -24,7 +22,6 @@ function requireGoogleConfig() {
 
 export const isGoogleConfigured = (): boolean => authConfig.google !== null;
 
-/** PKCE verifier: 32 random bytes, base64url — well inside the 43–128 char range. */
 export function createCodeVerifier(): string {
   return randomBytes(32).toString("base64url");
 }
@@ -44,14 +41,11 @@ export function buildAuthorizeUrl(params: { state: string; codeVerifier: string 
   url.searchParams.set("state", params.state);
   url.searchParams.set("code_challenge", codeChallengeFor(params.codeVerifier));
   url.searchParams.set("code_challenge_method", "S256");
-  // Without this a user already signed into Google is silently reused, which
-  // makes "sign in as someone else" impossible.
   url.searchParams.set("prompt", "select_account");
   return url.toString();
 }
 
 export interface GoogleProfile {
-  /** Google's stable subject id. The only safe key to link an account on. */
   sub: string;
   email: string;
   emailVerified: boolean;
@@ -59,7 +53,6 @@ export interface GoogleProfile {
   picture: string | null;
 }
 
-/** Exchanges the one-time code for tokens, then validates the returned ID token. */
 export async function exchangeCodeForProfile(
   code: string,
   codeVerifier: string,
@@ -80,7 +73,6 @@ export async function exchangeCodeForProfile(
   });
 
   if (!response.ok) {
-    // Body may carry the client secret context; log the status only.
     throw new GoogleAuthError(`Google token exchange failed (${response.status})`);
   }
 
@@ -92,12 +84,6 @@ export async function exchangeCodeForProfile(
   return verifyIdToken(payload.id_token);
 }
 
-/**
- * Verifies signature, issuer and audience. The audience check is the one that
- * matters most: without it an ID token minted for a *different* Google OAuth
- * client would be accepted here, letting anyone with their own client sign in
- * as any user.
- */
 export async function verifyIdToken(idToken: string): Promise<GoogleProfile> {
   const google = requireGoogleConfig();
 
@@ -120,7 +106,7 @@ export async function verifyIdToken(idToken: string): Promise<GoogleProfile> {
   return {
     sub,
     email: email.toLowerCase(),
-    // Google sends this as a boolean, but has historically also sent "true".
+    // Google has historically sent this as the string "true" as well as a boolean.
     emailVerified: claims.email_verified === true || claims.email_verified === "true",
     name: typeof claims.name === "string" ? claims.name : null,
     picture: typeof claims.picture === "string" ? claims.picture : null,

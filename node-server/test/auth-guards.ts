@@ -1,8 +1,3 @@
-/**
- * Guard-layer regression checks: token handling, PKCE, CSRF, Origin and auth
- * gating. Everything here short-circuits before a query runs, so it needs no
- * database — run it with `npm test`.
- */
 process.env.DATABASE_URL = "postgresql://unused:unused@127.0.0.1:1/unused";
 process.env.ALLOWED_ORIGINS = "http://localhost:5173";
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-32ch";
@@ -102,8 +97,6 @@ console.log("\ncsrf enforcement on mutations");
 
 console.log("\nauth guards");
 {
-  // CSRF-valid but unauthenticated: proves the 401 comes from requireAuth, not
-  // from the CSRF hook short-circuiting ahead of it.
   const res = await app.inject({
     method: "PATCH",
     url: "/auth/me",
@@ -130,8 +123,6 @@ console.log("\nauth guards");
 
 console.log("\nsession teardown");
 {
-  // No refresh cookie, so this never touches the database — it falls straight
-  // through to clearAuthCookies, which is the part under test.
   const res = await app.inject({
     method: "POST",
     url: "/auth/logout",
@@ -147,13 +138,10 @@ console.log("\nsession teardown");
   check("logout clears the access cookie", cleared("sal_access"));
   check("logout clears the refresh cookie", cleared("sal_refresh"));
 
-  // Regression: deleting this one instead of rotating it left the login form
-  // with nothing to echo, so the next sign-in attempt always 403'd.
   const next = cookieFrom(res, "sal_csrf");
   check("logout leaves a usable csrf cookie", Boolean(next?.value), JSON.stringify(next));
   check("logout rotates the csrf token", next?.value !== "aaa", String(next?.value));
 
-  // And the rotated value is actually accepted on the sign-in that follows.
   const login = await app.inject({
     method: "POST",
     url: "/auth/login",

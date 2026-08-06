@@ -9,19 +9,11 @@ import { householdRoutes } from "./api/households.js";
 import { inventoryRoutes } from "./api/inventory.js";
 import { allowedOrigins, registerAuth } from "./auth/plugin.js";
 
-/**
- * Builds the fully-wired Fastify instance without binding a port.
- *
- * Split out from server.ts so the app can be exercised with `app.inject()` —
- * the auth guards, CSRF checks and Origin checks all short-circuit before any
- * query runs, so they are testable without a live database.
- */
 export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
-    // Cloud Run terminates TLS and forwards the caller in X-Forwarded-For.
-    // Without this every request looks like it came from the proxy, which would
-    // collapse the per-IP rate limits into a single shared bucket.
+    // Without this, Cloud Run's proxy is every caller's IP and the per-IP rate
+    // limits collapse into one shared bucket.
     trustProxy: true,
   });
 
@@ -29,20 +21,13 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     origin: allowedOrigins(),
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-    // Must be explicit: the browser preflights the CSRF header, and a preflight
-    // that does not allow it fails before the real request is ever sent.
     allowedHeaders: ["Content-Type", "X-CSRF-Token"],
   });
 
-  // Coarse per-IP ceiling. The strict, account-keyed limits live on the login
-  // and signup routes; this one catches an IP probing many different accounts.
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
 
-  // Cookie parsing plus the global identify/CSRF hooks. Must precede the routes.
   await registerAuth(app);
 
-  // Registered with no route attached: the per-user push channel (PRD §2.5.10)
-  // is a route file rather than a dependency decision when it lands.
   await app.register(websocket);
 
   await app.register(healthRoutes);

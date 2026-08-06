@@ -19,7 +19,6 @@ import { useAuth } from "../../auth/useAuth";
 import { Wordmark } from "../Wordmark";
 import classes from "./LoginPage.module.css";
 
-/** Codes the backend appends to its /login redirect when OAuth fails. */
 const OAUTH_ERRORS: Record<string, string> = {
   email_not_verified:
     "Google hasn't verified that email address, so we can't link it to an existing account. Sign in with your password instead.",
@@ -72,11 +71,8 @@ export function LoginPage() {
   }
 
   return (
-    // No explicit background: in dark mode Mantine's body sits a step darker
-    // than Paper's default surface, so the card separates on its own.
     <Center h="100%" p="md">
       <Paper w="100%" maw={400} withBorder shadow="sm" radius="md" px="xl" py={32}>
-        {/* Decorative: the title right below it already names the app. */}
         <Image src={logoUrl} alt="" w={120} h={120} mx="auto" mb="md" />
         <Wordmark order={1} className={classes.title} />
         <Text size="sm" c="dimmed" ta="center" mt={4} mb="lg">
@@ -127,8 +123,6 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.currentTarget.value)}
               autoComplete={mode === "signin" ? "current-password" : "new-password"}
               description={mode === "signup" ? "At least 12 characters." : undefined}
-              // Mirrors the server's zod rule so the failure is caught before a
-              // round-trip; the server remains the actual enforcer.
               minLength={mode === "signup" ? 12 : undefined}
               required
             />

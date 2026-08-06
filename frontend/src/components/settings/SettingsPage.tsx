@@ -7,17 +7,6 @@ import { SettingsPlaceholder } from "./SettingsPlaceholder";
 
 type Section = "profile" | "authentication" | "household";
 
-/**
- * Settings, reached from the header menu.
- *
- * The sections are a vertical nav on anything wide enough for one and a row of
- * tabs below that: a 200px rail beside a form leaves neither enough room on a
- * phone. There is no router yet, so which section is open is local state — swap
- * it for a route param when one lands, since these are the screens people link
- * each other to.
- *
- * Profile and Authentication are stubs. Household is the one that is built.
- */
 export function SettingsPage() {
   const [section, setSection] = useState<Section>("profile");
   const narrow = useMediaQuery("(max-width: 48em)");

@@ -7,19 +7,11 @@ export const REFRESH_COOKIE = "sal_refresh";
 export const CSRF_COOKIE = "sal_csrf";
 export const OAUTH_STATE_COOKIE = "sal_oauth";
 
-/**
- * The refresh cookie is scoped to /auth so it is not attached to ordinary API
- * or WebSocket requests — only /auth/refresh and /auth/logout ever need it,
- * and a narrower path means fewer places it can leak from.
- */
 const REFRESH_PATH = "/auth";
 
-/**
- * SameSite=Lax works here only because the frontend and backend share the
- * registrable domain `axoliz.ai` (see authConfig.cookieDomain). If the backend
- * is ever moved back to a *.run.app URL, these cookies stop being sent on
- * cross-site fetches and every authenticated request silently 401s.
- */
+// SameSite=Lax holds only while frontend and backend share a registrable domain
+// (authConfig.cookieDomain). Move the backend to a *.run.app URL and every
+// authenticated request silently 401s.
 const base = {
   domain: authConfig.cookieDomain,
   secure: authConfig.cookieSecure,
@@ -45,12 +37,6 @@ export function setAuthCookies(
   });
 }
 
-/**
- * Deliberately NOT httpOnly — the frontend has to read this value to echo it in
- * the X-CSRF-Token header. That is safe: the token is worthless to an attacker
- * on another origin, who can neither read our cookies nor set a custom header
- * on a cross-site request without passing CORS preflight.
- */
 export function setCsrfCookie(reply: FastifyReply, token: string): void {
   reply.setCookie(CSRF_COOKIE, token, {
     ...base,
@@ -61,19 +47,14 @@ export function setCsrfCookie(reply: FastifyReply, token: string): void {
 }
 
 export function clearAuthCookies(reply: FastifyReply): void {
-  // Path and domain must match what was set, or the browser keeps the original.
   reply.clearCookie(ACCESS_COOKIE, { ...base, path: "/" });
   reply.clearCookie(REFRESH_COOKIE, { ...base, path: REFRESH_PATH });
 
-  // The CSRF cookie is rotated, not deleted. The SPA does not reload when a
-  // session ends — it swaps to the login screen in place — so deleting it would
-  // leave the login form with no token to echo, and its POST would 403 before
-  // the mint-on-first-contact hook ever got another request to run on. A fresh
-  // value still stops a pre-logout token being carried into the next session.
+  // Rotated rather than deleted: the SPA swaps to the login screen without
+  // reloading, so it needs a token to echo on the very next request.
   setCsrfCookie(reply, randomToken());
 }
 
-/** Short-lived holder for the OAuth `state` + PKCE verifier during the redirect. */
 export function setOAuthStateCookie(reply: FastifyReply, value: string): void {
   reply.setCookie(OAUTH_STATE_COOKIE, value, {
     ...base,

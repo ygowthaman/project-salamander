@@ -1,23 +1,13 @@
 .logo {
-  /* Sized against the 60px AppShell.Header in HomePage — the two move
-     together, leaving 5px of clearance above and below. */
   width: 50px;
   height: 50px;
   flex-shrink: 0;
-  /* The mark is a transparent-cornered roundel, so it needs no tile behind it
-     and no radius to clip — it sits directly on the header. */
 }
 
 .nav {
   min-width: 0;
 }
 
-/* The accent doing its one job: naming the view you are on. The accent shares
-   its hue with the primary now, so colour is carrying even less on its own —
-   the current item also has a rule under it, and that rule is the part doing
-   the work. Both take the *light* green: at 2px on a near-black header a
-   non-text indicator needs 3:1, and the lime clears that with room to spare
-   (~7:1) where the deeper steps of the ramp start closing on it. */
 .navLink {
   position: relative;
   padding-block: 2px;

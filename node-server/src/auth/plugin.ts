@@ -9,21 +9,14 @@ import { randomToken, verifyAccessToken } from "./tokens.js";
 
 declare module "fastify" {
   interface FastifyRequest {
-    /** Populated from the access cookie on every request; null when anonymous. */
     user: User | null;
   }
 }
 
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-/**
- * Routes that legitimately arrive without a CSRF token.
- *
- * Both are GETs that Google drives, so they carry no CSRF header and cannot:
- * the callback is a top-level navigation from accounts.google.com. It is
- * protected instead by the `state` parameter, which is compared against a
- * signed, httpOnly cookie the attacker cannot forge.
- */
+// Top-level navigations from accounts.google.com cannot carry a CSRF header;
+// the signed `state` cookie is what protects them instead.
 const CSRF_EXEMPT_PATHS = new Set(["/auth/google", "/auth/google/callback"]);
 
 export function allowedOrigins(): string[] {
@@ -33,27 +26,15 @@ export function allowedOrigins(): string[] {
     .filter(Boolean);
 }
 
-/**
- * Registers cookie parsing and the global auth hooks on the *root* instance.
- *
- * Deliberately not a `fastify-plugin`-wrapped plugin: registering these hooks
- * and the `user` decorator directly on the root app makes them apply to every
- * route without pulling in another dependency for encapsulation-breaking.
- */
 export async function registerAuth(app: FastifyInstance): Promise<void> {
   await app.register(cookie, {
-    // Signs the short-lived OAuth state cookie. Reuses the JWT secret because
-    // both are server-side integrity checks with the same rotation story.
     secret: Buffer.from(authConfig.jwtSecret),
   });
 
   app.decorateRequest("user", null);
 
-  // Identify the caller. Never rejects — routes decide whether anonymous is OK.
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     if (!request.cookies[CSRF_COOKIE]) {
-      // Mint on first contact so the SPA always has a token to echo before it
-      // attempts its first mutation (it bootstraps with GET /auth/me).
       setCsrfCookie(reply, randomToken());
     }
 
@@ -66,10 +47,6 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
     request.user = await usersRepo.getUserById(db, userId);
   });
 
-  // CSRF: SameSite=Lax is the baseline, but PRD §2.4.4 sets the bar at
-  // defence-in-depth deliberately — these requests will eventually move money —
-  // so mutations also need a matching double-submit token and a recognised
-  // Origin.
   app.addHook("onRequest", async (request: FastifyRequest, reply: FastifyReply) => {
     if (!MUTATING_METHODS.has(request.method)) return;
     if (CSRF_EXEMPT_PATHS.has(new URL(request.url, "http://x").pathname)) return;
@@ -87,14 +64,12 @@ export async function registerAuth(app: FastifyInstance): Promise<void> {
   });
 }
 
-/** preHandler for routes that require a signed-in user. */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
     return reply.code(401).send({ detail: "Not authenticated" });
   }
 }
 
-/** The shape returned to the client — never includes password_hash. */
 export function publicUser(user: User) {
   return {
     id: user.id,
@@ -103,10 +78,6 @@ export function publicUser(user: User) {
     avatar_url: user.avatarUrl,
     email_verified: user.emailVerified,
     created_at: user.createdAt.toISOString(),
-    // Every user has one, always (PRD §2.2). `skip_household` is what the UI
-    // branches on: a user who was given a household silently must not be shown
-    // household features, a member list, or a name they never chose — even
-    // though the data behind them is identical to a user who created one.
     household_id: user.householdId,
     skip_household: user.skipHousehold,
     role: user.role,

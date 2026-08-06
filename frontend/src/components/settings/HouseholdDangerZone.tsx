@@ -16,37 +16,13 @@ import { deleteHousehold, leaveHousehold } from "../../api/households";
 import { useAuth } from "../../auth/useAuth";
 import { HouseholdDetail } from "../../types";
 
-/** How a member stopped being part of the household, for the banner afterwards. */
 export type DepartureKind = "left" | "left-dissolved" | "deleted";
 
 interface HouseholdDangerZoneProps {
   detail: HouseholdDetail;
-  /** Reports a completed departure so the section above can say what happened. */
   onDeparted: (kind: DepartureKind) => void;
 }
 
-/**
- * The two ways out of a household, and the warnings the PRD requires in front of
- * each.
- *
- * They are deliberately asymmetric, and the copy has to carry that: **leaving
- * costs you what only you could see, and deleting destroys what everyone
- * shared.** What neither of them costs is an account — nobody is ever signed out
- * or deleted by either control, which is the thing the copy must not overstate.
- *
- * The last-admin case is what makes leaving dangerous at all. Every household
- * must always have at least one admin, so a departure that would leave none
- * dissolves the household instead of being refused — destroying its inventory
- * and its records, though not anyone's account. That is announced here rather
- * than discovered afterwards, which is the one thing this section exists for:
- * someone clicking "leave" has not accepted that they are destroying anything,
- * and would otherwise take down a household everyone was using while believing
- * they were only removing themselves.
- *
- * A user who skipped the household step never reaches this screen — they do not
- * know they have a household, and neither of these controls would mean anything
- * to them.
- */
 export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneProps) {
   const { applyUser } = useAuth();
 
@@ -64,9 +40,6 @@ export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneP
     setBusy(true);
     try {
       const result = await leaveHousehold();
-      // The session survives — leaving is not deleting an account. Applying the
-      // returned user is what re-points the app at the new household; without it
-      // every screen keeps rendering the one they just left.
       applyUser(result.user);
       setLeaveOpen(false);
       onDeparted(result.previous_household_destroyed ? "left-dissolved" : "left");
@@ -83,10 +56,6 @@ export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneP
     setBusy(true);
     try {
       const result = await deleteHousehold();
-      // Deleting the household does not delete the account that asked for it, so
-      // the session is still good and this ends the same way a leave does: the
-      // caller is re-homed, and applying the returned user is what re-points the
-      // app at where they landed.
       applyUser(result.user);
       setDeleteOpen(false);
       onDeparted("deleted");
@@ -105,7 +74,6 @@ export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneP
         </Alert>
       )}
 
-      {/* ---- Leave, available to both roles ---- */}
       <Paper withBorder radius="md" p="lg">
         <Title order={4} mb="xs">
           Leave this household
@@ -160,11 +128,6 @@ export function HouseholdDangerZone({ detail, onDeparted }: HouseholdDangerZoneP
         </Button>
       </Paper>
 
-      {/* ---- Delete, admins only ----
-          Membership and role are both required, and the server checks "admin of
-          THIS household" rather than "is an admin". Hiding it from a member is
-          about not offering an action that would be refused, not about the
-          check — that lives on the route. */}
       {detail.role === "admin" && (
         <Paper
           withBorder
@@ -261,14 +224,6 @@ interface ConfirmByNameModalProps {
   children: ReactNode;
 }
 
-/**
- * A destructive confirmation gated on typing the household's name.
- *
- * The typing is what separates "I clicked the wrong button" from "I meant this":
- * both actions behind it are irreversible, and one of them destroys records
- * other people are relying on. Matching is exact apart from surrounding
- * whitespace — a near-miss is not a confirmation.
- */
 function ConfirmByNameModal({
   opened,
   onClose,

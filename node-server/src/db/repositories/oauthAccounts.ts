@@ -4,11 +4,6 @@ import { oauthAccounts, type OauthAccount } from "../schema/index.js";
 
 export const GOOGLE = "google";
 
-/**
- * Looks up the link by the provider's stable subject id. Matching on email
- * instead would re-point the link at whoever currently holds that address if a
- * Google account's email ever changes.
- */
 export async function getByProviderAccount(
   db: DbExecutor,
   provider: string,
@@ -35,7 +30,6 @@ export async function linkAccount(
   return row!;
 }
 
-/** Backs the "connected accounts" section of the account settings screen. */
 export async function listForUser(db: DbExecutor, userId: string): Promise<OauthAccount[]> {
   return db.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId));
 }
@@ -50,11 +44,6 @@ export async function unlinkAccount(
     .where(and(eq(oauthAccounts.userId, userId), eq(oauthAccounts.provider, provider)));
 }
 
-/**
- * Drops every provider link for a user. Used by the soft delete, where leaving
- * one intact would let the same person sign in again and land on the retired
- * record — see repositories/households.ts.
- */
 export async function unlinkAll(db: DbExecutor, userId: string): Promise<void> {
   await db.delete(oauthAccounts).where(eq(oauthAccounts.userId, userId));
 }
