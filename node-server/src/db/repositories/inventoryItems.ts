@@ -114,7 +114,7 @@ export interface NewItem {
   name: string;
   categoryId: string;
   unit?: string | null;
-  quantity?: number | null;
+  quantity: number;
   attributes?: string | null;
   isPrivate?: boolean;
 }
@@ -135,7 +135,7 @@ export async function createItem(
       name: input.name,
       categoryId: input.categoryId,
       unit: input.unit ?? null,
-      quantity: input.quantity ?? null,
+      quantity: input.quantity,
       attributes: input.attributes ?? null,
       isPrivate: input.isPrivate ?? false,
     })
@@ -148,7 +148,7 @@ export interface ItemPatch {
   name?: string;
   categoryId?: string;
   unit?: string | null;
-  quantity?: number | null;
+  quantity?: number;
   attributes?: string | null;
   isPrivate?: boolean;
 }
@@ -205,8 +205,7 @@ export type StockChange = { quantity: number } | { delta: number };
 
 export type StockResult =
   | { status: "ok"; item: ItemWithAuthor }
-  | { status: "not_found" }
-  | { status: "unknown_quantity" };
+  | { status: "not_found" };
 
 export async function countItemsByCategory(
   db: DbExecutor,
@@ -250,10 +249,6 @@ export async function applyStockChange(
 ): Promise<StockResult> {
   const existing = await getItem(db, householdId, actorId, id);
   if (!existing) return { status: "not_found" };
-
-  if ("delta" in change && existing.quantity === null) {
-    return { status: "unknown_quantity" };
-  }
 
   const quantity =
     "quantity" in change

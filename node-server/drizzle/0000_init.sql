@@ -57,7 +57,7 @@ CREATE TABLE "inventory_items" (
 	"added_by_user_id" uuid NOT NULL,
 	"is_private" boolean DEFAULT false NOT NULL,
 	"unit" text,
-	"quantity" integer,
+	"quantity" integer NOT NULL,
 	"attributes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"last_updated" timestamp with time zone DEFAULT now() NOT NULL

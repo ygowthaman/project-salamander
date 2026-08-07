@@ -58,12 +58,11 @@ Everything else the user reads is rendered by the server from the record: a read
 renders rows, a write renders what was stored, and the turn-ten failure message is
 server-written.
 
-Four jobs, one shape:
+Three jobs, one shape:
 
 | Job | Input | Output |
 |---|---|---|
-| **Interpretation** — the dominant case | free text + target schema + metadata | a DTO the server commits, **or a question** |
-| **Search interpretation** | free text | a query DTO the server runs (rows never return to the model) |
+| **Interpretation** — the dominant case | free text + target schema + metadata | a DTO the server commits, a query the server runs, **or a question** |
 | **Selection** | provider candidates + a constraint set | which product goes on a line item |
 | **Judgment** | a constraint miss + budget headroom | one action from a fixed set |
 
@@ -76,6 +75,10 @@ Architectural consequences, which run through everything below:
   instance holding it: session affinity is a requirement of the exchange, not of
   correctness (see
   [The interpretation exchange](#the-interpretation-exchange)).
+- **A read is interpreted, never answered.** The model turns *"do I have 1984?"*
+  into a query the server runs household-scoped and visibility-filtered; the rows
+  are rendered from the record and never re-enter the model's context. The model
+  decides what was asked for, never what is true.
 - **No token streaming** — responses are awaited whole and validated before use.
 - **The WebSocket carries data, not tokens** — it is a push channel for row
   changes (see [The push channel](#the-push-channel)).
@@ -158,7 +161,7 @@ Backend — Node + Fastify
   ├── REST routes ......... src/api/*
   ├── Auth ................ src/auth/*   ──► cookies, JWT, Google OIDC
   ├── Push channel ........ src/api/websocket.ts
-  ├── Agent (Claude) ...... src/agent/*  ──► Anthropic API (non-streaming)
+  ├── Agent (Claude) ...... src/agents/*  ──► Anthropic API (non-streaming)
   └── DB access ........... src/db/*
   │
   ▼
@@ -177,8 +180,9 @@ inventory exactly as it was.
 ## Backend
 
 The backend lives in `node-server/`. It is a small Fastify application composed of
-layers with a strict dependency direction: **api → agent, api → auth, api → db**.
-The agent, auth and db layers know nothing about each other or about routing.
+layers with a strict dependency direction: **api → agents, api → auth, api → db**,
+with **domain** beneath all of them. The agents, auth and db layers know nothing
+about each other or about routing, and domain knows nothing about any of them.
 
 The layout below marks **(planned)** on what does not exist yet. Everything
 unmarked is in the tree today.
@@ -187,8 +191,12 @@ unmarked is in the tree today.
 node-server/src/
 ├── server.ts              Bootstrap: migrations, listen, graceful shutdown
 ├── app.ts                 Composition root: builds the wired Fastify instance
-├── agent/                 (planned) LLM layer — interpretation functions,
-│                          each owning its prompt + tool schema
+├── agents/                LLM layer — interpretation functions, each owning
+│                          its prompt + output schema. The client and schemas
+│                          exist; the interpret functions are (planned)
+├── domain/                Field constraints shared by api/ and agents/, so a
+│                          rule about an item is written once. Imports zod and
+│                          nothing else
 ├── auth/
 │   ├── config.ts          Env resolution (Google credentials optional)
 │   ├── tokens.ts          Access-JWT sign/verify; refresh mint + hash
@@ -278,7 +286,7 @@ Routes that accept natural language call an agent-layer interpretation function,
 validate what comes back, and then either commit it or return the model's
 question — see [The interpretation exchange](#the-interpretation-exchange).
 
-### `agent/` — the LLM layer
+### `agents/` — the LLM layer
 
 **(planned.)**
 
@@ -371,7 +379,7 @@ inventory_items                         -- every tracked thing, in its complete 
   added_by_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT -- attribution
   is_private       BOOLEAN NOT NULL DEFAULT false                -- visibility
   unit             TEXT                 -- free text, deliberately
-  quantity         INTEGER              -- NULL = "tracked, count unknown"
+  quantity         INTEGER NOT NULL     -- >= 1 at creation, 0 once it runs out
   attributes       TEXT                 -- free text: "unabridged version", "E27 fitting"
   created_at, last_updated
 
@@ -503,7 +511,11 @@ natural-language input in the product runs through it:
                             accept directly. Invalid → treat as unresolved
 5. At turn 10, unresolved:  fail. A SERVER-WRITTEN message points the user at the
                             form. Nothing is written
-6. Commit:                  every item row the sentence named, in ONE transaction
+6a. A query →               run it household-scoped and visibility-filtered, and
+                            respond with the rows. Nothing is written, nothing is
+                            pushed, and the rows never go back to the model
+6b. A write →               commit every item row the sentence named, in ONE
+                            transaction
 7. Push:                    the changed rows, to the members allowed to see them
 8. Respond:                 the applied old→new diff, so the UI clears the input
                             and shows what it did

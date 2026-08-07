@@ -12,6 +12,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx test/auth-guards.ts",
+    "check:agent": "tsx test/agent-connection.ts",
     "db:generate": "tsx src/db/reset-migrations.ts && drizzle-kit generate --name init",
     "db:migrate": "tsx src/db/migrate.ts --reset",
     "db:migrate:preserve": "tsx src/db/migrate.ts",

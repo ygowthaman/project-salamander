@@ -1,5 +1,5 @@
 {
-  "id": "a9cf5641-fb6a-4667-8997-2a01865575c1",
+  "id": "dfebb1ed-be20-4f84-bf57-f0705eb4a57a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -519,7 +519,7 @@
           "name": "quantity",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "attributes": {
           "name": "attributes",

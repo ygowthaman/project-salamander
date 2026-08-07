@@ -22,7 +22,7 @@ export const inventoryItems = pgTable(
       .references(() => users.id, { onDelete: "restrict" }),
     isPrivate: boolean("is_private").notNull().default(false),
     unit: text("unit"),
-    quantity: integer("quantity"),
+    quantity: integer("quantity").notNull(),
     attributes: text("attributes"),
     createdAt: createdAt(),
     lastUpdated: timestamp("last_updated", { withTimezone: true })

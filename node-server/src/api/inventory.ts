@@ -2,22 +2,23 @@ import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
-import { request } from "node:http";
+import { inventoryItem } from "../domain/inventory.js";
 
 const idParams = z.object({
   id: z.string().uuid(),
 });
 
-const createItemBody = z.object({
-  name: z.string().trim().min(1).max(200),
-  category_id: z.string().uuid(),
-  unit: z.string().trim().min(1).max(50).nullish(),
-  quantity: z.number().int().min(0).nullish(),
-  attributes: z.string().trim().min(1).max(500).nullish(),
-  is_private: z.boolean().default(false),
+const itemBody = inventoryItem.extend({
+  unit: inventoryItem.shape.unit.nullish(),
+  attributes: inventoryItem.shape.attributes.nullish(),
 });
 
-const updateItemBody = createItemBody.partial().refine((b) => Object.keys(b).length > 0, {
+const createItemBody = itemBody.extend({
+  quantity: itemBody.shape.quantity.min(1),
+  is_private: itemBody.shape.is_private.default(false),
+});
+
+const updateItemBody = itemBody.partial().refine((b) => Object.keys(b).length > 0, {
   message: "At least one field must be provided",
 });
 
@@ -102,7 +103,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     return notImplemented(reply, "GET /inventory/items/:id");
   });
 
-  app.post("inventory/interpret", async (request, response) => {
+  app.post("/inventory/interpret", async (request, response) => {
     const parsed = interpretBody.safeParse(request.body ?? {});
     if (!parsed.success) {
       return response.code(422).send({ detail: parsed.error.issues });
