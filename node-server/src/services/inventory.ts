@@ -6,11 +6,49 @@ import * as itemsRepo from "../db/repositories/inventoryItems.js";
 import { db } from "../db/client.js";
 
 type ProposedItem = Extract<Interpretation, { type: "create_item" }>["item"];
+type ProposedChanges = Extract<Interpretation, { type: "update_item" }>["changes"];
+
+export type Changes = { [K in keyof ProposedChanges]?: NonNullable<ProposedChanges[K]> };
 
 export type Interpreted =
   | { type: "question"; question: string }
   | { type: "items"; items: ItemWithAuthor[]; total: number }
-  | { type: "proposal"; item: ProposedItem }
+  | { type: "create_proposal"; item: ProposedItem }
+  | { type: "update_proposal"; item: ItemWithAuthor; changes: Changes }
+  | { type: "delete_proposal"; item: ItemWithAuthor }
+  | { type: "no_match"; q: string }
+  | { type: "ambiguous"; q: string; items: ItemWithAuthor[] }
+
+const candidateLimit = 5;
+
+type Resolution =
+  | { status: "one"; item: ItemWithAuthor }
+  | { status: "none" }
+  | { status: "many"; items: ItemWithAuthor[] }
+
+async function resolveNamedItem(
+  actor: User,
+  q: string,
+  categoryId: string | null
+): Promise<Resolution> {
+  const { items, total } = await itemsRepo.listItems(db, actor.householdId, actor.id, {
+    q,
+    categoryId: categoryId ?? undefined,
+    limit: candidateLimit,
+    offset: 0
+  });
+
+  const [only] = items;
+  if (!only) return { status: "none" };
+  if (total > 1) return { status: "many", items };
+  return { status: "one", item: only };
+}
+
+function withoutUnchanged(changes: ProposedChanges): Changes {
+  return Object.fromEntries(
+    Object.entries(changes).filter(([, value]) => value !== null)
+  ) as Changes;
+}
 
 export async function interpretSentence(actor: User, text: string): Promise<Interpreted | null> {
   const categories = await categoriesRepo.listCategories(db, actor.householdId);
@@ -26,10 +64,29 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
       };
     case "create_item":
       return {
-        type: "proposal",
+        type: "create_proposal",
         item: result.item
       }
-    case "find_items":
+    case "update_item": {
+      const changes = withoutUnchanged(result.changes);
+      if (Object.keys(changes).length === 0) return null;
+
+      const resolved = await resolveNamedItem(actor, result.q, result.category_id);
+      if (resolved.status === "none") return { type: "no_match", q: result.q };
+      if (resolved.status === "many") {
+        return { type: "ambiguous", q: result.q, items: resolved.items };
+      }
+      return { type: "update_proposal", item: resolved.item, changes };
+    }
+    case "delete_item": {
+      const resolved = await resolveNamedItem(actor, result.q, result.category_id);
+      if (resolved.status === "none") return { type: "no_match", q: result.q };
+      if (resolved.status === "many") {
+        return { type: "ambiguous", q: result.q, items: resolved.items };
+      }
+      return { type: "delete_proposal", item: resolved.item };
+    }
+    case "find_items": {
       const { items, total } = await itemsRepo.listItems(db, actor.householdId, actor.id, {
         q: result.q ?? undefined,
         categoryId: result.category_id ?? undefined,
@@ -37,6 +94,7 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
         offset: 0
       });
       return { type: "items", items, total };
+    }
     default: {
       const unhandled: never = result;
       throw new Error(`Unhandled interpretation: ${JSON.stringify(unhandled)}`);

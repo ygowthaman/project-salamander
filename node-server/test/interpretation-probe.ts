@@ -9,6 +9,8 @@ const categories: Category[] = [
 const sentences = [
   "add 2 litres of milk",
   "what books do we have?",
+  "we are down to 1 litre of milk",
+  "throw out the milk",
   "the thing from yesterday",
 ];
 

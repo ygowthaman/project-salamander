@@ -113,14 +113,42 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!result) {
       return response.code(422).send({ detail: interpretationFailed });
     }
-    if (result.type === "items") {
-      return response.send({
-        type: "items",
-        items: result.items.map(serialiseItem),
-        total: result.total
-      });
+
+    switch (result.type) {
+      case "question":
+        return response.send({ type: "question", question: result.question });
+      case "items":
+        return response.send({
+          type: "items",
+          items: result.items.map(serialiseItem),
+          total: result.total
+        });
+      case "create_proposal":
+        return response.send({ type: "create_proposal", item: result.item });
+      case "update_proposal":
+        return response.send({
+          type: "update_proposal",
+          item: serialiseItem(result.item),
+          changes: result.changes
+        });
+      case "delete_proposal":
+        return response.send({ type: "delete_proposal", item: serialiseItem(result.item) });
+      case "no_match":
+        return response.send({
+          type: "question",
+          question: `Nothing in your inventory matches "${result.q}".`
+        });
+      case "ambiguous":
+        return response.send({
+          type: "question",
+          question: `"${result.q}" matches more than one item. Which one did you mean?`,
+          items: result.items.map(serialiseItem)
+        });
+      default: {
+        const unhandled: never = result;
+        throw new Error(`Unhandled interpretation: ${JSON.stringify(unhandled)}`);
+      }
     }
-    return response.send(result);
   })
 
   app.post("/inventory/item", async (request, reply) => {

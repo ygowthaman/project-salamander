@@ -13,10 +13,33 @@ const proposedItem = inventoryItem.extend({
   quantity: inventoryItem.shape.quantity.min(1),
 }).strict();
 
+const proposedChanges = z.object({
+  name: inventoryItem.shape.name.nullable(),
+  category_id: inventoryItem.shape.category_id.nullable(),
+  unit: inventoryItem.shape.unit.nullable(),
+  quantity: inventoryItem.shape.quantity.nullable(),
+  attributes: inventoryItem.shape.attributes.nullable(),
+  is_private: inventoryItem.shape.is_private.nullable()
+}).strict();
+
+const itemSelector = {
+  q: inventoryItem.shape.name,
+  category_id: inventoryItem.shape.category_id.nullable()
+};
+
 export const interpretation = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("create_item"),
     item: proposedItem
+  }).strict(),
+  z.object({
+    type: z.literal("update_item"),
+    ...itemSelector,
+    changes: proposedChanges
+  }).strict(),
+  z.object({
+    type: z.literal("delete_item"),
+    ...itemSelector
   }).strict(),
   z.object({
     type: z.literal("find_items"),
@@ -43,10 +66,15 @@ function instructions(categories: Category[]) {
   Categories for this sentence:
   ${categories.map((c) => `${c.id} ${c.name}`).join("\n")}
   Use create_item when the sentence adds something to the inventory.
+  Use update_item when it changes something already in the inventory, and put only
+  the fields that change in changes, leaving every other field null.
+  Use delete_item when it removes something from the inventory entirely.
   Use find_items when it asks what the items are available.
-  Use question when the sentence is ambiguous, or names nothing in the category list, 
+  Use question when the sentence is ambiguous, or names nothing in the category list,
   or your are otherwise not able to resolve it to create_item or find_item.
   category_id must be one of the ids in the categories list.
+  For update_item and delete_item, q is the words the sentence used for the item.
+  You do not know which items exist, so never invent one that was not named.
   `;
 }
 
