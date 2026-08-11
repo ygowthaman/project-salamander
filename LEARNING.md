@@ -46,99 +46,60 @@ history of completed steps. Git holds the history; this file holds the present.
 
 # Current step
 
-## Step 4 — The route
+## Step 4 — The route, and proving it works end to end
 
-**File:** `node-server/src/api/inventory.ts`
+**Concept:** the trust boundary in code. The agent returns a *proposal*; the layers
+below it are where session identity is added back, where a proposal becomes SQL,
+and where nothing is written yet.
 
-**Concept:** the trust boundary in code. The agent returns a *proposal*; the route
-is where session identity is added back, where a query becomes SQL, and where
-nothing is written yet.
+### Where each concern lives
 
-### Write this
+- `agents/client.ts` — the one Anthropic client, the default model, and
+  `interpretAs`, which turns a sentence plus a Zod schema into a typed object or
+  `null`. Every agent shares it, so nothing can fork the connection.
+- `agents/inventory.ts` — the `interpretation` union and the prompt. No transport.
+- `services/inventory.ts` — owns `db` and the repositories, resolves the model's
+  selectors to real rows, returns domain objects.
+- `api/inventory.ts` — HTTP only: parse the body, serialise rows to the wire
+  shape, choose status codes, hold user-facing copy.
 
-Replace the body of `POST /inventory/interpret`:
+`householdId` and `id` come off the session and travel as *arguments*. They never
+reach the model — not on the way out (no slot in the schema) and not on the way in
+(the prompt names no household). A prompt injection can change what the model
+returns; it cannot reach the second argument of `listItems`.
 
-```ts
-const user = request.user!;
+`create_item`, `update_item` and `delete_item` all return proposals a human
+confirms. Only `find_items` executes, because a read cannot persist a mistake.
 
-const categories = await listCategories(db, user.householdId);
-const result = await interpret(
-  parsed.data.text,
-  categories.map((c) => ({ id: c.id, name: c.name })),
-);
+### What is left to close this step
 
-if (!result) {
-  return response.code(422).send({ detail: interpretationFailed });
-}
+The agent is verified against the live model through `npm run check:interpret`.
+The route is not verified at all — nothing has exercised the session, the SQL, or
+the status codes.
 
-if (result.type === "question") {
-  return response.send({ type: "question", question: result.question });
-}
+Two neighbours block a clean run, and both are worked around by hand for now:
 
-if (result.type === "find_items") {
-  const { items, total } = await listItems(db, user.householdId, user.id, {
-    q: result.q ?? undefined,
-    categoryId: result.category_id ?? undefined,
-    limit: 50,
-    offset: 0,
-  });
-  return response.send({ type: "items", items: items.map(serialiseItem), total });
-}
+1. **No categories route exists.** `listCategories` returns `[]` for a real
+   household, the prompt renders an empty category list, and every sentence comes
+   back as `question`. Insert a category row directly before testing.
+2. **`POST /inventory/item` is still 501.** Nothing can put an item in the table,
+   so `find_items` returns `{ items: [], total: 0 }` — correct, but it proves
+   nothing. Insert an item row directly to see rows come back.
 
-return response.send({ type: "proposal", item: result.item });
-```
-
-### Why the identity fields appear here and nowhere earlier
-
-`user.householdId` and `user.id` enter the flow for the first time in this
-function. They come off the session, they are passed as *arguments* to
-`listCategories` and `listItems`, and they never touched the model — not on the way
-out (no slot in the schema) and not on the way in (the prompt names no household).
-Everything the model influenced is in `result`; everything that decides *whose data
-this is* comes from `request.user`. Keep those two on separate lines of the call
-and they can never be confused for one another.
-
-### Why `create_item` returns a proposal
-
-`PRD.md:428` — *the model's output is a proposal, never a write*. `find_items`
-executes because a read is reversible and cannot be wrong in a way that persists;
-`create_item` goes back to the user for confirmation and is committed by a later
-call to `POST /inventory/item`, which re-validates it against `createItemBody` as
-if it had been typed into the form.
-
-That is the payoff for deriving both schemas from `domain/inventory.ts`: the
-proposal is already in the shape the commit route accepts, so there is no
-translation layer where a field could be quietly added.
-
-### Why the union is dispatched with early returns
-
-Each member is a different service call, a different response shape, and a
-different amount of risk. Writing them as three early returns rather than a shared
-envelope keeps that visible — and because `Interpretation` is a discriminated
-union, TypeScript narrows `result` inside each branch and will not let you read
-`result.item` in the `find_items` arm.
-
-If you add `update_item` to the schema later and forget this function, the compiler
-will not catch it — the branches still typecheck, the new member just falls through
-to the final return. Assign `result` to a `never`-typed variable after the last
-branch if you want that error at compile time.
-
-### What is deliberately not here yet
-
-`exchange_id` stays unused. The ten-turn clarification loop needs conversation
-state, which is its own design problem — where it lives, when it expires, what a
-turn costs. Step 5.
-
-### Verify it
-
-`npm run typecheck`, then run it against the live app with a real session cookie.
-Three sentences, three shapes: an add, a query, and something ambiguous.
+Then call `POST /inventory/interpret` with a real session cookie: an add, a query,
+and something ambiguous.
 
 ### Checkpoint
 
-- [ ] The route calls `interpret` with categories it fetched, and passes scope to the repositories as arguments
-- [ ] A `find_items` sentence returns rows; a `create_item` sentence returns a proposal and writes nothing
+- [ ] A `find_items` sentence returns actual rows, scoped to my household
+- [ ] A `create_item` sentence returns a proposal and writes nothing
 - [ ] An unparseable answer returns 422 with `interpretationFailed`
-- [ ] You can say why `create_item` doesn't commit, and where `household_id` enters the flow
+- [ ] I can say why `create_item` doesn't commit, and where `household_id` enters
+      the flow
 
-Then ask for step 5 — the clarification exchange and its turn counter.
+Then ask for step 5 — the categories module, CRUD routes before its agent, so the
+proposals it produces have somewhere to commit. The ten-turn clarification
+exchange is still unbuilt; `exchange_id` is parsed and ignored. `PRD.md:470-478`
+settles the cap and says the exchange is ephemeral, leaving one open question:
+whether the turns live server-side keyed by `exchange_id`, or come back from the
+client on each request.
