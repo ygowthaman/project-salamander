@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { inventoryItem } from "../domain/inventory.js";
+import { interpretSentence } from "../services/inventory.js";
 
 const idParams = z.object({
   id: z.string().uuid(),
@@ -108,9 +109,18 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return response.code(422).send({ detail: parsed.error.issues });
     }
-    void request.user;
-    void interpretationFailed;
-    return notImplemented(response, "POST inventory/interpret")
+    const result = await interpretSentence(request.user!, parsed.data.text);
+    if (!result) {
+      return response.code(422).send({ detail: interpretationFailed });
+    }
+    if (result.type === "items") {
+      return response.send({
+        type: "items",
+        items: result.items.map(serialiseItem),
+        total: result.total
+      });
+    }
+    return response.send(result);
   })
 
   app.post("/inventory/item", async (request, reply) => {
