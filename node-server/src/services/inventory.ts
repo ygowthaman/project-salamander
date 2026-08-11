@@ -1,4 +1,4 @@
-import { interpret, Interpretation } from "../agents/inventory.js";
+import { interpretInventory, Interpretation } from "../agents/inventory.js";
 import { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { User } from "../db/schema/auth.js";
 import * as categoriesRepo from "../db/repositories/categories.js";
@@ -52,7 +52,7 @@ function withoutUnchanged(changes: ProposedChanges): Changes {
 
 export async function interpretSentence(actor: User, text: string): Promise<Interpreted | null> {
   const categories = await categoriesRepo.listCategories(db, actor.householdId);
-  const result = await interpret(text, categories.map(c => ({ id: c.id, name: c.name })));
+  const result = await interpretInventory(text, categories.map(c => ({ id: c.id, name: c.name })));
 
   if (!result) return null;
 

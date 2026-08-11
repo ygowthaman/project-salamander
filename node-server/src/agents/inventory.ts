@@ -73,7 +73,7 @@ function instructions(categories: Category[]) {
   `;
 }
 
-export async function interpret(
+export async function interpretInventory(
   sentence: string,
   categories: Category[]
 ): Promise<Interpretation | null> {
