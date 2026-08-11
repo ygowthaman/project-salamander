@@ -294,14 +294,17 @@ Intentionally isolated from routing and the database — its only job is to talk
 Claude. It exposes one **interpretation function per target**, each owning:
 
 - **Its prompt** — isolated so it can be tuned without touching any other layer.
-- **Its tool/output schema** — the tool's `input_schema` *is* the target schema,
-  so the model must return schema-shaped JSON rather than prose to be regexed.
+- **Its output schema** — the zod schema handed to the model as
+  `output_config.format` *is* the target schema, so the model must return
+  schema-shaped JSON rather than prose to be regexed.
 
-**Object-or-question falls out of tool use.** The model calls the tool when it can
-resolve the sentence (`stop_reason: "tool_use"`) and replies with plain text when
-it cannot (`end_turn`) — exactly the branch the exchange needs. `tool_choice` is
-therefore left at its default: forcing the tool would strip the model's ability to
-ask and push it into inventing an id instead.
+**Object-or-question is a member of the schema.** Each target is a discriminated
+union over the operations it accepts plus a clarifying `question`, so the branch
+the exchange needs is a field the caller reads rather than a control-flow signal it
+has to infer, and a question is validated like any other field instead of arriving
+as free prose. Structured outputs constrain decoding to that union; the same schema
+re-validates the response on arrival, because the API guarantees the shape but not
+the field constraints — string lengths and formats are checked client-side.
 
 Callers pass context (the household's categories, the items in the asking
 member's view) and get back parsed, schema-shaped data or a question. The agent
@@ -504,7 +507,7 @@ natural-language input in the product runs through it:
                             MEMBER'S view (NOT is_private OR added_by = me) with
                             names + attributes; per named item quantity + unit,
                             plus par_level LEFT JOINed from mandates where it exists
-3. Interpret:               agent-layer call → tool use (an object) OR text (a question)
+3. Interpret:               agent-layer call → one union: an object OR a question
 4a. A question →            return it, increment the turn counter, write nothing.
                             The user answers; loop to step 3 with the exchange appended
 4b. An object →             validate with the SAME zod schema the route would
