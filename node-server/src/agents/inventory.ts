@@ -1,11 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { inventoryItem } from "../domain/inventory.js";
-import { transformJSONSchema } from "@anthropic-ai/sdk/lib/transform-json-schema";
-
-const client = new Anthropic();
-
-const model = "claude-sonnet-5";
+import { interpretAs } from "./client.js";
 
 const proposedItem = inventoryItem.extend({
   unit: inventoryItem.shape.unit.nullable(),
@@ -56,11 +51,6 @@ export type Interpretation = z.infer<typeof interpretation>;
 
 export type Category = { id: string; name: string };
 
-const interpretationFormat = {
-  type: "json_schema" as const,
-  schema: transformJSONSchema(z.toJSONSchema(interpretation, { reused: "inline" }))
-}
-
 function instructions(categories: Category[]) {
   return `You interpret one sentence from an inventory app.
   Categories for this sentence:
@@ -71,10 +61,15 @@ function instructions(categories: Category[]) {
   Use delete_item when it removes something from the inventory entirely.
   Use find_items when it asks what the items are available.
   Use question when the sentence is ambiguous, or names nothing in the category list,
-  or your are otherwise not able to resolve it to create_item or find_item.
+  or you are otherwise not able to resolve it to create_item or find_item.
   category_id must be one of the ids in the categories list.
   For update_item and delete_item, q is the words the sentence used for the item.
   You do not know which items exist, so never invent one that was not named.
+  name is what the thing is, as someone would write it on a list.
+  attributes is whatever narrows it to one particular version of that thing.
+  "2 litres of 2% milk" is name milk, attributes 2%.
+  "add 1984 unabridged version to books" is name 1984, attributes unabridged version.
+  Use the words the sentence used, and leave attributes null when nothing narrows it.
   `;
 }
 
@@ -82,22 +77,5 @@ export async function interpret(
   sentence: string,
   categories: Category[]
 ): Promise<Interpretation | null> {
-  const response = await client.messages.parse({
-    model,
-    max_tokens: 512,
-    thinking: { type: "disabled" },
-    system: instructions(categories),
-    output_config: { format: interpretationFormat },
-    messages: [{ role: "user", content: sentence }]
-  });
-
-  const block = response.content.find(b => b.type === "text");
-  if (!block) return null;
-
-  try {
-    const parsed = interpretation.safeParse(JSON.parse(block.text));
-    return parsed.success ? parsed.data : null;
-  } catch {
-    return null;
-  }
+  return interpretAs(sentence, instructions(categories), interpretation);
 }
