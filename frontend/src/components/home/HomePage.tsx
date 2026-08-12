@@ -17,6 +17,7 @@ export function HomePage() {
           onNavigate={setView}
           onSignOut={() => void signOut()}
           accountLabel={user?.display_name ?? user?.email}
+          skipHousehold={user?.skip_household ?? false}
         />
       </AppShell.Header>
 

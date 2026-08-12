@@ -210,7 +210,7 @@ node-server/src/
 │   ├── households.ts      /households/* — create, members, roles, deletion
 │   ├── inventory.ts       /inventory/items/* — zod + serialisers wired;
 │   │                      every handler returns 501 pending the service layer
-│   ├── categories.ts      (planned) CRUD behind the management page
+│   ├── categories.ts      (planned) /categories/* — CRUD behind Organize
 │   └── websocket.ts       (planned) the push channel
 └── db/
     ├── client.ts          pg.Pool + Drizzle instance; Db / DbExecutor types
@@ -693,6 +693,10 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
   natural-language box posts to a `/inventory/interpret` that has no server side.
   Flipping `USE_MOCKS` in `frontend/src/api/inventory.ts` is the whole migration
   once the routes are wired.
+- **The categories UI has no server behind it.** The Organize module's category
+  list calls `/categories` through `frontend/src/api/categories.ts`, and no such
+  routes are registered — every call 404s. The repository layer beneath them is
+  complete, including duplicate-name and in-use detection.
 - **The migration has never been applied to a live Postgres.** Doing so is the
   first real test of the migration path and should happen before anything is
   stacked on top of it.
@@ -712,8 +716,10 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
   simply missed. The channel's best-effort contract keeps this from being data
   loss, but the UI does go stale without telling the user.
 - **No frontend router.** `App.tsx` is a binary authenticated/unauthenticated
-  gate. Categories, inventory and settings are separate pages, so this needs
-  resolving before the inventory UI grows.
+  gate, and the module in view is a `useState<View>` in `HomePage` with no URL
+  behind it — nothing is linkable, bookmarkable or survives a reload. Inventory,
+  management and settings are separate views, so this needs resolving before the
+  inventory UI grows.
 - **Prompt caching is unproven at this size.** `cache_control: { type:
   "ephemeral" }` belongs on the interpretation prompts, but the minimum cacheable
   prefix is model-dependent and not monotonic, so tiering down to a cheaper model
@@ -789,7 +795,9 @@ places the inventory code still contradicts the PRD are listed in
 
 1. **The inventory service layer** — behind the routes that already exist, with
    the visibility filter expressed once in the repository layer.
-2. **Categories management** — the CRUD page the inventory picker reads from.
+2. **Categories management** — the UI is built and calls `/categories`; the four
+   routes behind it are not, so the surface the inventory picker reads from is
+   one thin route file over the existing repository.
 3. **The push channel** — per-user socket, per-household fan-out, and a frontend
    client that reconnects.
 4. **The interpretation exchange** — the natural-language path for add, read,

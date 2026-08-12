@@ -10,19 +10,28 @@ import logoUrl from "../../assets/simple_logo.svg";
 import { Wordmark } from "../Wordmark";
 import classes from "./AppHeader.module.css";
 
-const LINKS: { value: View; label: string }[] = [
-  { value: "inventory", label: "INVENTORY" },
-  { value: "schedules", label: "SCHEDULE" },
-];
+function navLinks(skipHousehold: boolean): { value: View; label: string }[] {
+  return [
+    { value: "inventory", label: "INVENTORY" },
+    { value: "household", label: skipHousehold ? "ORGANIZE" : "HOUSEHOLD" },
+  ];
+}
 
 interface AppHeaderProps {
   view: View;
   onNavigate: (view: View) => void;
   onSignOut: () => void;
   accountLabel?: string;
+  skipHousehold: boolean;
 }
 
-export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHeaderProps) {
+export function AppHeader({
+  view,
+  onNavigate,
+  onSignOut,
+  accountLabel,
+  skipHousehold,
+}: AppHeaderProps) {
   return (
     <Group h="100%" px="md" gap="xl" wrap="nowrap">
       <Group gap="sm" wrap="nowrap">
@@ -31,7 +40,7 @@ export function AppHeader({ view, onNavigate, onSignOut, accountLabel }: AppHead
       </Group>
 
       <Group component="nav" aria-label="Modules" gap="lg" wrap="nowrap" className={classes.nav}>
-        {LINKS.map((link) => {
+        {navLinks(skipHousehold).map((link) => {
           const active = view === link.value;
           return (
             <Anchor

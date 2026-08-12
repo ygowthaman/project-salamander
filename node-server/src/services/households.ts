@@ -96,7 +96,7 @@ export async function removeMember(actor: User, userId: string): Promise<User> {
   requireAdmin(actor);
 
   if (userId === actor.id) {
-    throw new HouseholdError(400, "Use POST /household/leave to leave the household yourself");
+    throw new HouseholdError(400, "Use POST /households/leave to leave the household yourself");
   }
 
   const outcome = await householdsRepo.removeMember(db, actor.householdId, userId);

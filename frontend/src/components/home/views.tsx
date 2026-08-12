@@ -1,10 +1,11 @@
 import { Center, Stack, Text, Title } from "@mantine/core";
-import { IconCalendarClock, IconShoppingCart } from "@tabler/icons-react";
+import { IconShoppingCart } from "@tabler/icons-react";
 import { ReactNode } from "react";
+import { HouseholdPage } from "../household/HouseholdPage";
 import { InventoryPage } from "../inventory/InventoryPage";
 import { SettingsPage } from "../settings/SettingsPage";
 
-export type View = "inventory" | "schedules" | "cart" | "settings";
+export type View = "inventory" | "household" | "cart" | "settings";
 
 function Placeholder({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
   return (
@@ -22,16 +23,6 @@ function Placeholder({ icon, title, body }: { icon: ReactNode; title: string; bo
   );
 }
 
-export function SchedulesView() {
-  return (
-    <Placeholder
-      icon={<IconCalendarClock size={40} stroke={1.4} />}
-      title="Schedules"
-      body="Recurring restocks and when they next run."
-    />
-  );
-}
-
 export function CartView() {
   return (
     <Placeholder
@@ -46,8 +37,8 @@ export function ViewBody({ view }: { view: View }) {
   switch (view) {
     case "inventory":
       return <InventoryPage />;
-    case "schedules":
-      return <SchedulesView />;
+    case "household":
+      return <HouseholdPage />;
     case "cart":
       return <CartView />;
     case "settings":

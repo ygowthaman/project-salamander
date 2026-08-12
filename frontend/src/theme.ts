@@ -1,4 +1,4 @@
-import { createTheme, MantineColorsTuple } from "@mantine/core";
+import { createTheme, MantineColorsTuple, Tabs } from "@mantine/core";
 
 // Shades 6 and 9 are the logo's own greens, duplicated as --salamander-green and
 // --salamander-green-deep in index.css; change one and change the other.
@@ -24,5 +24,10 @@ export const theme = createTheme({
   fontFamily: "Montserrat, system-ui, Helvetica, Arial, sans-serif",
   headings: {
     fontFamily: "Montserrat, system-ui, Helvetica, Arial, sans-serif",
+  },
+  components: {
+    Tabs: Tabs.extend({
+      styles: { tabLabel: { textAlign: "start" } },
+    }),
   },
 });

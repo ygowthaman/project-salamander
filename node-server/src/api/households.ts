@@ -58,7 +58,7 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(500).send({ detail: "Internal server error" });
   });
 
-  app.get("/household", async (request) => {
+  app.get("/households", async (request) => {
     const summary = await households.getHousehold(request.user!);
     return {
       ...publicHousehold(summary.household),
@@ -70,7 +70,7 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 
-  app.post("/household", async (request, reply) => {
+  app.post("/households", async (request, reply) => {
     const parsed = createHouseholdBody.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
@@ -83,7 +83,7 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     return { household: publicHousehold(household), user: publicUser(user) };
   });
 
-  app.patch("/household", async (request, reply) => {
+  app.patch("/households", async (request, reply) => {
     const parsed = updateHouseholdBody.safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
@@ -97,17 +97,17 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     return publicHousehold(household);
   });
 
-  app.delete("/household", async (request) => {
+  app.delete("/households", async (request) => {
     const user = await households.deleteHousehold(request.user!);
     return { ok: true, user: publicUser(user) };
   });
 
-  app.get("/household/members", async (request) => {
+  app.get("/households/members", async (request) => {
     const members = await households.listMembers(request.user!);
     return { members: members.map((m) => publicMember(m, request.user!.id)) };
   });
 
-  app.patch("/household/members/:user_id/role", async (request, reply) => {
+  app.patch("/households/members/:user_id/role", async (request, reply) => {
     const params = memberParams.safeParse(request.params);
     if (!params.success) {
       return reply.code(422).send({ detail: params.error.issues });
@@ -125,7 +125,7 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     return publicMember(member, request.user!.id);
   });
 
-  app.delete("/household/members/:user_id", async (request, reply) => {
+  app.delete("/households/members/:user_id", async (request, reply) => {
     const params = memberParams.safeParse(request.params);
     if (!params.success) {
       return reply.code(422).send({ detail: params.error.issues });
@@ -135,7 +135,7 @@ export const householdRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true, removed_user_id: removed.id };
   });
 
-  app.post("/household/leave", async (request) => {
+  app.post("/households/leave", async (request) => {
     const departure = await households.leaveHousehold(request.user!);
     return {
       ok: true,

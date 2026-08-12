@@ -103,6 +103,8 @@ The user record carries a **`skipHousehold` flag**. It records one thing: **whet
 
 The flag exists because the *data* looks identical in both cases — there is a household row either way — but the *user's understanding* does not. Someone who skipped does not know they have a household, so the UI must not show them household features, member lists, or a household name they never chose. The flag is what lets the interface tell those two people apart.
 
+**Wherever the interface would name the household to a member at `skipHousehold: true`, it says *Organize* instead.** This holds everywhere in the application, not on one screen: navigation, headings, labels and copy. The rule is about the word, not the feature — a surface that is safe for a member who skipped stays available to them under the neutral name, and one that is not stays hidden either way. A member at `skipHousehold: false` sees the same surface named *Household*.
+
 Every route by which a user comes to be in a household sets it, and there are only four:
 
 | How they got there | `skipHousehold` |
@@ -247,6 +249,14 @@ Because they are the only member of that new household, they are its `admin` (§
 Note that a **sole member is always the sole admin** (§2.3.2), so a person leaving a household they were alone in always dissolves it. No empty household is ever left behind.
 
 **Removal can never trigger that dissolution.** Only an admin can remove someone, so an admin always remains afterwards. The household-destroying case belongs to leaving alone.
+
+#### 2.2.11 The Organize module
+
+**A top-level module holds the household's own configuration — the sets and rules its data is filed against, rather than the data itself.** Categories (§2.5.2) are the first of these. It is laid out as a list of sections down one side and the selected section beside it, so later additions are a new entry in that list rather than a new place to look.
+
+**It is identical for every member regardless of `skipHousehold`, apart from its name** (§2.2.3). Nothing on it names or describes the household, so there is nothing a member who skipped must be kept away from — what they configure is simply theirs.
+
+**Administering the household is not here.** The household's name and address, its members, roles, invitations and deletion are a different surface (§2.2.6), and one that is closed to a member who skipped.
 
 ### 2.3 Roles
 
@@ -395,7 +405,11 @@ Categories are records rather than free text on the item because the rest of the
 
 Because items point at the category record and not at its name, **renaming a category is safe** — every item follows it, and no history is rewritten.
 
-*TBD: the category management surface.* Creating, renaming and deleting categories, and what happens to a category that still has items in it, are not specified here. *TBD: whether a new household starts with any categories at all,* or with an empty list the first item has to fill.
+**Categories are managed from the Organize module** (§2.2.11), on a surface that does one thing: a text box and a save button add a category, and the list below it shows every category the household has. Each row can be renamed in place or deleted. There is nothing else to set, because a category is a name and nothing else.
+
+**A category that still has items in it cannot be deleted.** The attempt is refused and the user is told how many items stand in the way, so no delete can quietly take a collection with it. Emptying or re-filing those items is the only route to removing it. Renaming carries no such restriction — items point at the record, not the name (above).
+
+*TBD: whether a new household starts with any categories at all,* or with an empty list the first item has to fill.
 
 #### 2.5.3 Two ways to do everything
 
