@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { inventoryItem } from "../domain/inventory.js";
-import { interpretSentence } from "../services/inventory.js";
+import { interpretSentence, listItemsByCategory } from "../services/inventory.js";
 
 const idParams = z.object({
   id: z.string().uuid(),
@@ -90,9 +90,14 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // Declared before `/inventory/items/:id` so "grouped" is not matched as an id.
-  app.get("/inventory/items/grouped", async (request, reply) => {
-    void request.user;
-    return notImplemented(reply, "GET /inventory/items/grouped");
+  app.get("/inventory/items/grouped", async (request): Promise<GroupedItemsResponse> => {
+    const groups = await listItemsByCategory(request.user!);
+    return {
+      groups: groups.map(({ category, items }) => ({
+        category,
+        items: items.map(serialiseItem),
+      })),
+    };
   });
 
   app.get("/inventory/items/:id", async (request, reply) => {

@@ -74,3 +74,28 @@ export interface InventoryCategoryGroup {
 export interface InventoryGrouped {
   groups: InventoryCategoryGroup[];
 }
+
+export interface ProposedItem {
+  name: string;
+  category_id: string;
+  unit: string | null;
+  quantity: number;
+  attributes: string | null;
+  is_private: boolean;
+}
+
+export type ProposedChanges = Partial<{
+  name: string;
+  category_id: string;
+  unit: string;
+  quantity: number;
+  attributes: string;
+  is_private: boolean;
+}>;
+
+export type Interpretation =
+  | { type: "question"; question: string; items?: InventoryItem[] }
+  | { type: "items"; items: InventoryItem[]; total: number }
+  | { type: "create_proposal"; item: ProposedItem }
+  | { type: "update_proposal"; item: InventoryItem; changes: ProposedChanges }
+  | { type: "delete_proposal"; item: InventoryItem };

@@ -28,7 +28,6 @@ Pointers only; the linked file is the answer.
 | Components | [`components/inventory/InventoryPage.tsx`](../../frontend/src/components/inventory/InventoryPage.tsx), [`InventoryItemCard.tsx`](../../frontend/src/components/inventory/InventoryItemCard.tsx) |
 | Styles | [`InventoryPage.module.css`](../../frontend/src/components/inventory/InventoryPage.module.css), [`InventoryItemCard.module.css`](../../frontend/src/components/inventory/InventoryItemCard.module.css) |
 | Mount | [`components/home/views.tsx`](../../frontend/src/components/home/views.tsx) |
-| Mocks | [`api/mocks/inventory.groupedByCategory.json`](../../frontend/src/api/mocks/inventory.groupedByCategory.json) |
 
 ## Tests
 

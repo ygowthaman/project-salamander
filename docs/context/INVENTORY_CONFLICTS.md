@@ -37,15 +37,6 @@ says the remaining work is.
 
 ## The NL path is still a one-shot parse, not an exchange
 
-### [ ] C11 — `InterpretResult` has no room for a question
-**Where:** [`frontend/src/api/inventory.ts:34-37`](../../frontend/src/api/inventory.ts#L34-L37) · **Batch:** FE-1
-**Code:** `interface InterpretResult { summary: string }` — one field, always a committed result.
-**Spec:** PRD §2.5.5–§2.5.7 — the model replies with **either a structured object or a question**,
-and an unresolved sentence opens a clarification exchange capped at ten.
-**Fix:** Make the response a discriminated union — a committed result, or a question carrying the
-exchange id and the turn number. The exchange is ephemeral (§2.5.7): nothing about it is persisted
-client-side beyond the life of the component.
-
 ### [ ] C12 — the client asserts there is no conversation
 **Where:** [`frontend/src/api/inventory.ts:41-43`](../../frontend/src/api/inventory.ts#L41-L43) and
 [`InventoryPage.tsx:32-34`](../../frontend/src/components/inventory/InventoryPage.tsx#L32-L34) · **Batch:** FE-1
@@ -67,10 +58,11 @@ Not conflicts: nothing here asserts anything false, it is simply absent. Listed 
 only this file knows the shape of what is missing. Roughly in dependency order — each is blocked by
 the ones above it.
 
-- [ ] **Every route returns 501** via `todo()` at [`api/inventory.ts:131`](../../node-server/src/api/inventory.ts#L131).
-      The `categories` and `inventoryItems` repositories are written and nothing calls them, so this
-      is wiring rather than design. PRD §2.5.3's central promise — the form path stays fully usable
-      with the LLM off — is met by nothing until it is done.
+- [ ] **Every item route except the grouped read returns 501** via `notImplemented` in
+      [`api/inventory.ts`](../../node-server/src/api/inventory.ts) — the flat list, the single read,
+      create, stock, update and delete. The `inventoryItems` repository is written and nothing calls
+      those parts of it, so this is wiring rather than design. PRD §2.5.3's central promise — the
+      form path stays fully usable with the LLM off — is met by nothing until it is done.
 - [ ] **Nothing has run against Postgres.** `npm test` is deliberately database-free and the
       migrations have never been applied anywhere, so the visibility filter, the `ON DELETE RESTRICT`
       refusal and the attribution join are verified as types and compiled SQL, not as behaviour.
@@ -80,10 +72,9 @@ the ones above it.
       `auth-guards.ts`. The cases that matter: household scoping, the visibility filter, stock
       arithmetic, track-only items (null quantity/unit), and that nothing here imports anything
       reorder-related.
-- [ ] **No `/categories` routes at all.** §2.5.1 makes category mandatory and §2.5.4 needs a picker
-      over the household's own.
-- [ ] **No categories page, no add/edit form, no private toggle, no attribution on the card.**
-      The wire shape carries `added_by` and `is_private`; nothing renders them.
+- [ ] **No category picker on the item form.** §2.5.4 needs one over the household's own categories;
+      `GET /categories` serves them and nothing in the inventory UI reads it.
+- [ ] **No add/edit form, no private toggle, no attribution on the card.** The wire shape carries
+      `added_by` and `is_private`; nothing renders them.
 - [ ] **No WS route.** `@fastify/websocket` is registered in `app.ts` with nothing attached. The
       push must be visibility-filtered like the read: a private item reaches its owner alone.
-- [ ] **No `POST /inventory/interpret`.** The client calls it against a fixture.

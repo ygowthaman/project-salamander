@@ -77,17 +77,22 @@ The agent is verified against the live model through `npm run check:interpret`.
 The route is not verified at all — nothing has exercised the session, the SQL, or
 the status codes.
 
-Two neighbours block a clean run, and both are worked around by hand for now:
+Categories are real end to end. `categoryRoutes` is registered in `app.ts`, and
+`CategoriesSection` on the household page creates, renames and deletes them. Make
+the categories the sentences will name through the UI; `interpretSentence` reads
+them back with `listCategories` and renders them into the prompt, so a sentence
+resolves to a `category_id` instead of falling through to `question`.
 
-1. **No categories route exists.** `listCategories` returns `[]` for a real
-   household, the prompt renders an empty category list, and every sentence comes
-   back as `question`. Insert a category row directly before testing.
-2. **`POST /inventory/item` is still 501.** Nothing can put an item in the table,
-   so `find_items` returns `{ items: [], total: 0 }` — correct, but it proves
-   nothing. Insert an item row directly to see rows come back.
+The inventory UI is off its fixtures. `frontend/src/api/inventory.ts` calls the
+real routes, `GET /inventory/items/grouped` serves rows through
+`listItemsByCategory`, and the interpret response is typed as the discriminated
+union the server actually sends. So the textarea on the inventory page carries a
+real session cookie into the agent, and the page reloads from the database after.
 
-Then call `POST /inventory/interpret` with a real session cookie: an add, a query,
-and something ambiguous.
+One neighbour still blocks a clean run: every write route answers 501, so nothing
+can put an item in the table. Insert item rows directly to see rows come back.
+
+Then drive it from the UI: an add, a query, and something ambiguous.
 
 ### Checkpoint
 
@@ -97,9 +102,16 @@ and something ambiguous.
 - [ ] I can say why `create_item` doesn't commit, and where `household_id` enters
       the flow
 
-Then ask for step 5 — the categories module, CRUD routes before its agent, so the
-proposals it produces have somewhere to commit. The ten-turn clarification
-exchange is still unbuilt; `exchange_id` is parsed and ignored. `PRD.md:470-478`
-settles the cap and says the exchange is ephemeral, leaving one open question:
-whether the turns live server-side keyed by `exchange_id`, or come back from the
-client on each request.
+Then ask for step 5 — the commit path, so a proposal a human confirms has
+somewhere to land: `POST /inventory/item` and the rest of the 501s in
+`api/inventory.ts`.
+
+Two loose ends waiting behind it:
+
+- `agents/category.ts` exists and `npm run check:interpret` exercises it, but no
+  route calls `interpretCategory`, and its prompt describes a `q` selector the
+  schema does not have — the schema selects on `name`.
+- The ten-turn clarification exchange is unbuilt; `exchange_id` is parsed and
+  ignored. `PRD.md:470-478` settles the cap and says the exchange is ephemeral,
+  leaving one open question: whether the turns live server-side keyed by
+  `exchange_id`, or come back from the client on each request.

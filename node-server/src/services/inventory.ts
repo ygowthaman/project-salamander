@@ -19,6 +19,24 @@ export type Interpreted =
   | { type: "no_match"; q: string }
   | { type: "ambiguous"; q: string; items: ItemWithAuthor[] }
 
+export type CategoryGroup = {
+  category: { id: string; name: string };
+  items: ItemWithAuthor[];
+};
+
+export async function listItemsByCategory(actor: User): Promise<CategoryGroup[]> {
+  const rows = await itemsRepo.listItemsWithCategory(db, actor.householdId, actor.id);
+  const groups = new Map<string, CategoryGroup>();
+
+  for (const { category, ...item } of rows) {
+    const group = groups.get(category.id);
+    if (group) group.items.push(item);
+    else groups.set(category.id, { category, items: [item] });
+  }
+
+  return [...groups.values()];
+}
+
 const candidateLimit = 5;
 
 type Resolution =

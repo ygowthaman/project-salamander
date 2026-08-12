@@ -14,11 +14,26 @@ import {
 import { IconAlertTriangle, IconSparkles } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { getInventoryGroupedByCategory, interpretInventoryText } from "../../api/inventory";
-import { InventoryCategoryGroup } from "../../types";
+import { Interpretation, InventoryCategoryGroup } from "../../types";
 import { InventoryItemCard } from "./InventoryItemCard";
 import classes from "./InventoryPage.module.css";
 
 const COLUMNS = { base: 1, sm: 2, lg: 3 };
+
+function receiptFor(result: Interpretation): string {
+  switch (result.type) {
+    case "question":
+      return result.question;
+    case "items":
+      return `${result.total} ${result.total === 1 ? "item" : "items"} matched.`;
+    case "create_proposal":
+      return `Add ${result.item.name}?`;
+    case "update_proposal":
+      return `Change ${result.item.name}?`;
+    case "delete_proposal":
+      return `Remove ${result.item.name}?`;
+  }
+}
 
 export function InventoryPage() {
   const [groups, setGroups] = useState<InventoryCategoryGroup[] | null>(null);
@@ -52,7 +67,7 @@ export function InventoryPage() {
     try {
       const result = await interpretInventoryText(sentence);
       setText("");
-      setReceipt(result.summary);
+      setReceipt(receiptFor(result));
       await load();
     } catch (error) {
       setReceipt(error instanceof Error ? error.message : "That could not be applied.");
