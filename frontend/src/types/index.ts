@@ -66,6 +66,17 @@ export interface InventoryItem {
   last_updated: string;
 }
 
+export interface NewInventoryItem {
+  name: string;
+  category_id: string;
+  unit: string | null;
+  quantity: number;
+  attributes: string | null;
+  is_private: boolean;
+}
+
+export type InventoryItemPatch = Partial<NewInventoryItem>;
+
 export interface InventoryCategoryGroup {
   category: { id: string; name: string };
   items: InventoryItem[];

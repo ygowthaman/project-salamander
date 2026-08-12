@@ -3,6 +3,7 @@ import {
   Button,
   Container,
   Group,
+  Modal,
   Paper,
   ScrollArea,
   SimpleGrid,
@@ -13,12 +14,72 @@ import {
 } from "@mantine/core";
 import { IconAlertTriangle, IconSparkles } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
-import { getInventoryGroupedByCategory, interpretInventoryText } from "../../api/inventory";
-import { Interpretation, InventoryCategoryGroup } from "../../types";
+import {
+  deleteInventoryItem,
+  getInventoryGroupedByCategory,
+  interpretInventoryText,
+} from "../../api/inventory";
+import { Interpretation, InventoryCategoryGroup, InventoryItem } from "../../types";
 import { InventoryItemCard } from "./InventoryItemCard";
+import { InventoryItemForm, ItemFormMode } from "./InventoryItemForm";
+import { InventoryProposalsTable, Proposal } from "./InventoryProposalsTable";
 import classes from "./InventoryPage.module.css";
 
 const COLUMNS = { base: 1, sm: 2, lg: 3 };
+
+let proposalCount = 0;
+
+function nextProposalKey(): string {
+  proposalCount += 1;
+  return `proposal-${proposalCount}`;
+}
+
+function proposalsFrom(result: Interpretation): Proposal[] {
+  const key = nextProposalKey();
+
+  switch (result.type) {
+    case "create_proposal":
+      return [{ key, op: "create", fields: result.item }];
+    case "update_proposal": {
+      const { item, changes } = result;
+      return [
+        {
+          key,
+          op: "update",
+          item,
+          fields: {
+            name: changes.name ?? item.name,
+            category_id: changes.category_id ?? item.category_id,
+            quantity: changes.quantity ?? item.quantity ?? 1,
+            unit: changes.unit ?? item.unit,
+            attributes: changes.attributes ?? item.attributes,
+            is_private: changes.is_private ?? item.is_private,
+          },
+        },
+      ];
+    }
+    case "delete_proposal": {
+      const { item } = result;
+      return [
+        {
+          key,
+          op: "delete",
+          item,
+          fields: {
+            name: item.name,
+            category_id: item.category_id,
+            quantity: item.quantity ?? 0,
+            unit: item.unit,
+            attributes: item.attributes,
+            is_private: item.is_private,
+          },
+        },
+      ];
+    }
+    default:
+      return [];
+  }
+}
 
 function receiptFor(result: Interpretation): string {
   switch (result.type) {
@@ -42,6 +103,20 @@ export function InventoryPage() {
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [receipt, setReceipt] = useState<string | null>(null);
+
+  const [formMode, setFormMode] = useState<ItemFormMode>("create");
+  const [selected, setSelected] = useState<InventoryItem | null>(null);
+
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+
+  const [pendingDelete, setPendingDelete] = useState<InventoryItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  function openForm(mode: ItemFormMode, item: InventoryItem | null) {
+    setFormMode(mode);
+    setSelected(item);
+  }
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -68,6 +143,7 @@ export function InventoryPage() {
       const result = await interpretInventoryText(sentence);
       setText("");
       setReceipt(receiptFor(result));
+      setProposals(proposalsFrom(result));
       await load();
     } catch (error) {
       setReceipt(error instanceof Error ? error.message : "That could not be applied.");
@@ -76,99 +152,186 @@ export function InventoryPage() {
     }
   }
 
+  async function confirmDelete() {
+    if (!pendingDelete || deleting) return;
+
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await deleteInventoryItem(pendingDelete.id);
+      if (selected?.id === pendingDelete.id) openForm("create", null);
+      setPendingDelete(null);
+      await load();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "Could not delete that item.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Container size="xl" className={classes.page}>
-      <Stack gap="lg" pb="md">
-        <div>
-          <Text size="sm" c="dimmed">
-            What you own, and how much of it is left.
-          </Text>
-        </div>
+      <Text size="sm" c="dimmed" pb="md">
+        What you own, and how much of it is left.
+      </Text>
 
-        <Paper withBorder radius="md" p="md">
-          <Textarea
-            value={text}
-            onChange={(event) => setText(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                event.preventDefault();
-                void submit();
-              }
+      <div className={classes.panes}>
+        <section className={classes.exchange}>
+          <Paper withBorder radius="md" p="md">
+            <Textarea
+              value={text}
+              onChange={(event) => setText(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+              placeholder={'Try "Add 1984 to my Books" or "low on eggs and milk, out of bread"'}
+              aria-label="Describe an inventory change"
+              autosize
+              minRows={2}
+              maxRows={6}
+              disabled={submitting}
+            />
+
+            <Group justify="space-between" mt="sm" wrap="nowrap">
+              <Text size="xs" c="dimmed">
+                Plain English. Press ⌘/Ctrl + Enter to send.
+              </Text>
+              <Button
+                className={classes.sendButton}
+                onClick={() => void submit()}
+                loading={submitting}
+                disabled={!text.trim()}
+                leftSection={<IconSparkles size={16} stroke={1.6} />}
+              >
+                Send
+              </Button>
+            </Group>
+          </Paper>
+
+          <ScrollArea
+            className={classes.scroll}
+            classNames={{ content: classes.scrollContent }}
+            type="auto"
+            scrollbars="y"
+            offsetScrollbars="y"
+          >
+            {receipt && (
+              <Paper withBorder radius="md" p="sm">
+                <Text size="sm">{receipt}</Text>
+              </Paper>
+            )}
+          </ScrollArea>
+        </section>
+
+        <section className={classes.workspace}>
+          <InventoryItemForm
+            mode={formMode}
+            item={selected}
+            onSaved={() => {
+              openForm("create", null);
+              void load();
             }}
-            placeholder={'Try "Add 1984 to my Books" or "low on eggs and milk, out of bread"'}
-            aria-label="Describe an inventory change"
-            autosize
-            minRows={2}
-            maxRows={6}
-            disabled={submitting}
+            onClose={() => openForm("create", null)}
           />
 
-          <Group justify="space-between" mt="sm" wrap="nowrap">
-            <Text size="xs" c="dimmed">
-              {receipt ?? "Plain English. Press ⌘/Ctrl + Enter to send."}
-            </Text>
-            <Button
-              onClick={() => void submit()}
-              loading={submitting}
-              disabled={!text.trim()}
-              leftSection={<IconSparkles size={16} stroke={1.6} />}
-            >
-              Send
+          <InventoryProposalsTable
+            proposals={proposals}
+            onCommitted={(key) => {
+              setProposals((pending) => pending.filter((proposal) => proposal.key !== key));
+              void load();
+            }}
+          />
+
+          <ScrollArea
+            className={classes.scroll}
+            classNames={{ content: classes.scrollContent }}
+            type="auto"
+            scrollbars="y"
+            offsetScrollbars="y"
+          >
+            {loadError && (
+              <Alert
+                color="red"
+                variant="light"
+                radius="md"
+                icon={<IconAlertTriangle size={18} stroke={1.6} />}
+                title="Inventory did not load"
+              >
+                <Stack align="flex-start" gap="xs">
+                  <Text size="sm">{loadError}</Text>
+                  <Button size="xs" variant="light" color="red" onClick={() => void load()}>
+                    Try again
+                  </Button>
+                </Stack>
+              </Alert>
+            )}
+
+            {!groups && !loadError && (
+              <SimpleGrid cols={COLUMNS} spacing="md">
+                <Skeleton height={220} radius="md" />
+                <Skeleton height={220} radius="md" />
+                <Skeleton height={220} radius="md" />
+              </SimpleGrid>
+            )}
+
+            {groups?.length === 0 && (
+              <Text size="sm" c="dimmed">
+                Nothing tracked yet — describe your first item above.
+              </Text>
+            )}
+
+            {groups && groups.length > 0 && (
+              <SimpleGrid cols={COLUMNS} spacing="md" verticalSpacing="md">
+                {groups.map((group) => (
+                  <InventoryItemCard
+                    key={group.category.id}
+                    category={group.category.name}
+                    items={group.items}
+                    onView={(item) => openForm("view", item)}
+                    onEdit={(item) => openForm("edit", item)}
+                    onDelete={(item) => {
+                      setDeleteError(null);
+                      setPendingDelete(item);
+                    }}
+                  />
+                ))}
+              </SimpleGrid>
+            )}
+          </ScrollArea>
+        </section>
+      </div>
+
+      <Modal
+        opened={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Delete this item?"
+        centered
+        radius="md"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            {pendingDelete?.name} will be removed from your inventory. This cannot be undone.
+          </Text>
+
+          {deleteError && (
+            <Alert color="red" variant="light" radius="md" role="alert">
+              {deleteError}
+            </Alert>
+          )}
+
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={() => setPendingDelete(null)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button color="red" loading={deleting} onClick={() => void confirmDelete()}>
+              Delete
             </Button>
           </Group>
-        </Paper>
-      </Stack>
-
-      <ScrollArea
-        className={classes.scroll}
-        classNames={{ content: classes.scrollContent }}
-        type="auto"
-        scrollbars="y"
-        offsetScrollbars="y"
-      >
-        {loadError && (
-          <Alert
-            color="red"
-            variant="light"
-            radius="md"
-            icon={<IconAlertTriangle size={18} stroke={1.6} />}
-            title="Inventory did not load"
-          >
-            <Stack align="flex-start" gap="xs">
-              <Text size="sm">{loadError}</Text>
-              <Button size="xs" variant="light" color="red" onClick={() => void load()}>
-                Try again
-              </Button>
-            </Stack>
-          </Alert>
-        )}
-
-        {!groups && !loadError && (
-          <SimpleGrid cols={COLUMNS} spacing="md">
-            <Skeleton height={220} radius="md" />
-            <Skeleton height={220} radius="md" />
-            <Skeleton height={220} radius="md" />
-          </SimpleGrid>
-        )}
-
-        {groups?.length === 0 && (
-          <Text size="sm" c="dimmed">
-            Nothing tracked yet — describe your first item above.
-          </Text>
-        )}
-
-        {groups && groups.length > 0 && (
-          <SimpleGrid cols={COLUMNS} spacing="md" verticalSpacing="md">
-            {groups.map((group) => (
-              <InventoryItemCard
-                key={group.category.id}
-                category={group.category.name}
-                items={group.items}
-              />
-            ))}
-          </SimpleGrid>
-        )}
-      </ScrollArea>
+        </Stack>
+      </Modal>
     </Container>
   );
 }

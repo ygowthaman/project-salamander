@@ -182,7 +182,7 @@ export async function updateItem(
 
   await db
     .update(inventoryItems)
-    .set(patch)
+    .set({ ...patch, lastUpdated: new Date() })
     .where(and(eq(inventoryItems.id, id), eq(inventoryItems.householdId, householdId)));
 
   return { status: "ok", item: (await getItem(db, householdId, actorId, id))! };

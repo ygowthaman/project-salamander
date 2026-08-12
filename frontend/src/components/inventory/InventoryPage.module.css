@@ -4,14 +4,52 @@
   flex-direction: column;
 }
 
-.scroll {
+.panes {
   flex: 1;
-  /* A flex item will not shrink below its content without this, so the region
-     would grow past the page instead of scrolling inside it. */
+  /* A flex item will not shrink below its content without this, so the panes
+     would grow past the page instead of scrolling inside them. */
   min-height: 0;
+  display: grid;
+  grid-template-columns: 3fr 7fr;
+  gap: var(--mantine-spacing-md);
+}
+
+.exchange,
+.workspace {
+  display: grid;
+  min-height: 0;
+  gap: var(--mantine-spacing-md);
+}
+
+.exchange {
+  grid-template-rows: auto 1fr;
+}
+
+.workspace {
+  grid-template-rows: auto auto 1fr;
+}
+
+.scroll {
+  min-height: 0;
+}
+
+.sendButton {
+  flex-shrink: 0;
 }
 
 .scrollContent {
   padding-inline-end: var(--mantine-spacing-xs);
   padding-bottom: var(--mantine-spacing-xs);
+}
+
+@media (max-width: $mantine-breakpoint-md) {
+  .page {
+    height: auto;
+  }
+
+  .panes,
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
 }

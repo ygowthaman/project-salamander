@@ -3,7 +3,15 @@ import { z } from "zod";
 import { requireAuth } from "../auth/plugin.js";
 import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { inventoryItem } from "../domain/inventory.js";
-import { interpretSentence, listItemsByCategory } from "../services/inventory.js";
+import {
+  InventoryError,
+  createItem,
+  deleteItem,
+  getItem,
+  interpretSentence,
+  listItemsByCategory,
+  updateItem,
+} from "../services/inventory.js";
 
 const idParams = z.object({
   id: z.string().uuid(),
@@ -79,6 +87,17 @@ function notImplemented(reply: FastifyReply, operation: string) {
 export const inventoryRoutes: FastifyPluginAsync = async (app) => {
   app.addHook("preHandler", requireAuth);
 
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof InventoryError) {
+      return reply.code(error.status).send({ detail: error.detail });
+    }
+    if (error.statusCode && error.statusCode < 500) {
+      return reply.code(error.statusCode).send({ detail: error.message });
+    }
+    request.log.error({ err: error }, "inventory route failed");
+    return reply.code(500).send({ detail: "Internal server error" });
+  });
+
   app.get("/inventory/items", async (request, reply) => {
     const parsed = listItemsQuery.safeParse(request.query ?? {});
     if (!parsed.success) {
@@ -105,8 +124,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
-    void request.user;
-    return notImplemented(reply, "GET /inventory/items/:id");
+    return serialiseItem(await getItem(request.user!, parsed.data.id));
   });
 
   app.post("/inventory/interpret", async (request, response) => {
@@ -161,8 +179,13 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
-    void request.user;
-    return notImplemented(reply, "POST /inventory/item");
+    const { category_id, is_private, ...fields } = parsed.data;
+    const item = await createItem(request.user!, {
+      ...fields,
+      categoryId: category_id,
+      isPrivate: is_private,
+    });
+    return reply.code(201).send(serialiseItem(item));
   });
 
   app.post("/inventory/items/:id/stock", async (request, reply) => {
@@ -187,8 +210,13 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
-    void request.user;
-    return notImplemented(reply, "PATCH /inventory/items/:id");
+    const { category_id, is_private, ...fields } = parsed.data;
+    const item = await updateItem(request.user!, params.data.id, {
+      ...fields,
+      ...(category_id !== undefined && { categoryId: category_id }),
+      ...(is_private !== undefined && { isPrivate: is_private }),
+    });
+    return serialiseItem(item);
   });
 
   app.delete("/inventory/items/:id", async (request, reply) => {
@@ -196,7 +224,7 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return reply.code(422).send({ detail: parsed.error.issues });
     }
-    void request.user;
-    return notImplemented(reply, "DELETE /inventory/items/:id");
+    await deleteItem(request.user!, parsed.data.id);
+    return reply.code(204).send();
   });
 };

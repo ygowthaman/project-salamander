@@ -1,9 +1,27 @@
 import { interpretInventory, Interpretation } from "../agents/inventory.js";
-import { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
+import { ItemPatch, ItemWithAuthor, NewItem } from "../db/repositories/inventoryItems.js";
 import { User } from "../db/schema/auth.js";
 import * as categoriesRepo from "../db/repositories/categories.js";
 import * as itemsRepo from "../db/repositories/inventoryItems.js";
 import { db } from "../db/client.js";
+
+export class InventoryError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(detail);
+    this.name = "InventoryError";
+  }
+}
+
+function unknownCategory(): InventoryError {
+  return new InventoryError(404, "That category no longer exists");
+}
+
+function itemNotFound(): InventoryError {
+  return new InventoryError(404, "That item no longer exists");
+}
 
 type ProposedItem = Extract<Interpretation, { type: "create_item" }>["item"];
 type ProposedChanges = Extract<Interpretation, { type: "update_item" }>["changes"];
@@ -35,6 +53,45 @@ export async function listItemsByCategory(actor: User): Promise<CategoryGroup[]>
   }
 
   return [...groups.values()];
+}
+
+export async function createItem(actor: User, input: NewItem): Promise<ItemWithAuthor> {
+  const item = await itemsRepo.createItem(db, actor.householdId, actor.id, input);
+  if (!item) throw unknownCategory();
+  return item;
+}
+
+export async function getItem(actor: User, id: string): Promise<ItemWithAuthor> {
+  const item = await itemsRepo.getItem(db, actor.householdId, actor.id, id);
+  if (!item) throw itemNotFound();
+  return item;
+}
+
+export async function updateItem(
+  actor: User,
+  id: string,
+  patch: ItemPatch,
+): Promise<ItemWithAuthor> {
+  const result = await itemsRepo.updateItem(db, actor.householdId, actor.id, id, patch);
+
+  switch (result.status) {
+    case "ok":
+      return result.item;
+    case "not_found":
+      throw itemNotFound();
+    case "unknown_category":
+      throw unknownCategory();
+    case "not_the_author":
+      throw new InventoryError(
+        403,
+        "Only the member who added an item can change whether it is private",
+      );
+  }
+}
+
+export async function deleteItem(actor: User, id: string): Promise<void> {
+  const deleted = await itemsRepo.deleteItem(db, actor.householdId, actor.id, id);
+  if (!deleted) throw itemNotFound();
 }
 
 const candidateLimit = 5;

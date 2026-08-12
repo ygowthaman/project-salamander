@@ -12,7 +12,7 @@ Pointers only; the linked file is the answer.
 | Migrations | [`node-server/drizzle/`](../../node-server/drizzle/) — regenerate, never hand-edit |
 | Migration runner | [`db/migrate.ts`](../../node-server/src/db/migrate.ts), [`db/reset-migrations.ts`](../../node-server/src/db/reset-migrations.ts) |
 | Repository | [`db/repositories/inventoryItems.ts`](../../node-server/src/db/repositories/inventoryItems.ts) → `listItemsWithCategory`, `createItem`, `updateItem`, `deleteItem`, `applyStockChange`, `visibleTo` |
-| Service | [`services/inventory.ts`](../../node-server/src/services/inventory.ts) → `interpretSentence`, `Interpreted` |
+| Service | [`services/inventory.ts`](../../node-server/src/services/inventory.ts) → `listItemsByCategory`, `getItem`, `createItem`, `updateItem`, `deleteItem`, `interpretSentence`, `Interpreted`, `InventoryError` |
 | Domain schema | [`domain/inventory.ts`](../../node-server/src/domain/inventory.ts) → `inventoryItem` |
 | Agent | [`agents/inventory.ts`](../../node-server/src/agents/inventory.ts) → `interpretInventory`, `interpretation` |
 | Model client | [`agents/client.ts`](../../node-server/src/agents/client.ts) |
@@ -22,10 +22,10 @@ Pointers only; the linked file is the answer.
 
 | | |
 |---|---|
-| Client | [`api/inventory.ts`](../../frontend/src/api/inventory.ts) → `getInventoryGroupedByCategory`, `interpretInventoryText` |
+| Client | [`api/inventory.ts`](../../frontend/src/api/inventory.ts) → `getInventoryGroupedByCategory`, `createInventoryItem`, `updateInventoryItem`, `deleteInventoryItem`, `interpretInventoryText` |
 | Transport | [`api/client.ts`](../../frontend/src/api/client.ts) → `apiFetch` |
-| Types | [`types/index.ts`](../../frontend/src/types/index.ts) → `InventoryItem`, `InventoryCategoryGroup`, `InventoryGrouped`, `ItemAuthor` |
-| Components | [`components/inventory/InventoryPage.tsx`](../../frontend/src/components/inventory/InventoryPage.tsx), [`InventoryItemCard.tsx`](../../frontend/src/components/inventory/InventoryItemCard.tsx) |
+| Types | [`types/index.ts`](../../frontend/src/types/index.ts) → `InventoryItem`, `NewInventoryItem`, `InventoryItemPatch`, `InventoryCategoryGroup`, `InventoryGrouped`, `ItemAuthor` |
+| Components | [`components/inventory/InventoryPage.tsx`](../../frontend/src/components/inventory/InventoryPage.tsx), [`InventoryItemCard.tsx`](../../frontend/src/components/inventory/InventoryItemCard.tsx), [`InventoryItemForm.tsx`](../../frontend/src/components/inventory/InventoryItemForm.tsx) |
 | Styles | [`InventoryPage.module.css`](../../frontend/src/components/inventory/InventoryPage.module.css), [`InventoryItemCard.module.css`](../../frontend/src/components/inventory/InventoryItemCard.module.css) |
 | Mount | [`components/home/views.tsx`](../../frontend/src/components/home/views.tsx) |
 
