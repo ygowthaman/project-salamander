@@ -25,7 +25,7 @@ import {
 import { FormEvent, useEffect, useState } from "react";
 import { listCategories } from "../../api/categories";
 import { createInventoryItem, updateInventoryItem } from "../../api/inventory";
-import { Category, InventoryItem } from "../../types";
+import { Category, InventoryItem, NewInventoryItem } from "../../types";
 
 const NAME_MAX_LENGTH = 200;
 const UNIT_MAX_LENGTH = 50;
@@ -36,6 +36,7 @@ export type ItemFormMode = "create" | "edit" | "view";
 interface InventoryItemFormProps {
   mode: ItemFormMode;
   item: InventoryItem | null;
+  values: NewInventoryItem | null;
   onSaved: () => void;
   onClose: () => void;
 }
@@ -50,7 +51,13 @@ function headingFor(mode: ItemFormMode, item: InventoryItem | null): string {
   return mode === "view" ? item.name : `Edit ${item.name}`;
 }
 
-export function InventoryItemForm({ mode, item, onSaved, onClose }: InventoryItemFormProps) {
+export function InventoryItemForm({
+  mode,
+  item,
+  values,
+  onSaved,
+  onClose,
+}: InventoryItemFormProps) {
   const [categories, setCategories] = useState<Category[] | null>(null);
   const [opened, setOpened] = useState(false);
 
@@ -72,7 +79,8 @@ export function InventoryItemForm({ mode, item, onSaved, onClose }: InventoryIte
 
   useEffect(() => {
     setError(null);
-    if (!item) {
+    const prefill = values ?? item;
+    if (!prefill) {
       setName("");
       setCategoryId(null);
       setQuantity(1);
@@ -81,14 +89,14 @@ export function InventoryItemForm({ mode, item, onSaved, onClose }: InventoryIte
       setIsPrivate(false);
       return;
     }
-    setName(item.name);
-    setCategoryId(item.category_id);
-    setQuantity(item.quantity ?? 1);
-    setUnit(item.unit ?? "");
-    setAttributes(item.attributes ?? "");
-    setIsPrivate(item.is_private);
+    setName(prefill.name);
+    setCategoryId(prefill.category_id);
+    setQuantity(prefill.quantity ?? 1);
+    setUnit(prefill.unit ?? "");
+    setAttributes(prefill.attributes ?? "");
+    setIsPrivate(prefill.is_private);
     setOpened(true);
-  }, [item, mode]);
+  }, [item, values, mode]);
 
   const readOnly = mode === "view";
   const canSave = name.trim().length > 0 && categoryId !== null && Number(quantity) >= 1;
@@ -136,7 +144,7 @@ export function InventoryItemForm({ mode, item, onSaved, onClose }: InventoryIte
           {headingFor(mode, item)}
         </Text>
         <Group gap={4} wrap="nowrap">
-          {item && (
+          {(item || values) && (
             <Tooltip label="Back to adding" withArrow>
               <ActionIcon variant="subtle" color="gray" aria-label="Back to adding" onClick={onClose}>
                 <IconX size={16} stroke={1.6} />

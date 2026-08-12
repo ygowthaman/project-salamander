@@ -1,5 +1,15 @@
-import { Alert, Button, Paper, ScrollArea, Table, Text } from "@mantine/core";
-import { IconDeviceFloppy, IconPlus, IconTrash } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Paper,
+  ScrollArea,
+  Table,
+  Text,
+  Tooltip,
+} from "@mantine/core";
+import { IconDeviceFloppy, IconEye, IconPlus, IconTrash, IconX } from "@tabler/icons-react";
 import { ReactNode, useEffect, useState } from "react";
 import { listCategories } from "../../api/categories";
 import {
@@ -16,6 +26,8 @@ export type Proposal =
 
 interface InventoryProposalsTableProps {
   proposals: Proposal[];
+  onView: (proposal: Proposal) => void;
+  onDismiss: (key: string) => void;
   onCommitted: (key: string) => void;
 }
 
@@ -31,6 +43,8 @@ const ACTIONS = {
 
 export function InventoryProposalsTable({
   proposals,
+  onView,
+  onDismiss,
   onCommitted,
 }: InventoryProposalsTableProps) {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -104,17 +118,41 @@ export function InventoryProposalsTable({
                   <Table.Td>{fields.unit ?? "—"}</Table.Td>
                   <Table.Td>{fields.is_private ? "Yes" : "No"}</Table.Td>
                   <Table.Td>{fields.attributes ?? "—"}</Table.Td>
-                  <Table.Td w={110}>
-                    <Button
-                      size="xs"
-                      color={action.color}
-                      loading={busyKey === proposal.key}
-                      disabled={busyKey !== null && busyKey !== proposal.key}
-                      leftSection={action.icon}
-                      onClick={() => void commit(proposal)}
-                    >
-                      {action.label}
-                    </Button>
+                  <Table.Td w={190}>
+                    <Group gap={4} wrap="nowrap" justify="flex-end">
+                      <Button
+                        size="xs"
+                        color={action.color}
+                        loading={busyKey === proposal.key}
+                        disabled={busyKey !== null && busyKey !== proposal.key}
+                        leftSection={action.icon}
+                        onClick={() => void commit(proposal)}
+                      >
+                        {action.label}
+                      </Button>
+                      <Tooltip label="Open in the form" withArrow>
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          aria-label={`Open ${fields.name} in the form`}
+                          disabled={busyKey !== null}
+                          onClick={() => onView(proposal)}
+                        >
+                          <IconEye size={16} stroke={1.6} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label="Dismiss" withArrow>
+                        <ActionIcon
+                          variant="subtle"
+                          color="gray"
+                          aria-label={`Dismiss ${fields.name}`}
+                          disabled={busyKey !== null}
+                          onClick={() => onDismiss(proposal.key)}
+                        >
+                          <IconX size={16} stroke={1.6} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               );

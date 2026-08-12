@@ -14,6 +14,9 @@ const inventorySentences = [
   "we are down to 1 litre of milk",
   "throw out the milk",
   "the thing from yesterday",
+  "Add 1984 and Origin to books",
+  "we need eggs, milk, bread",
+  "remove 1984 and Origin",
 ];
 
 for (const sentence of inventorySentences) {

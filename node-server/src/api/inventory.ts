@@ -5,6 +5,7 @@ import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { inventoryItem } from "../domain/inventory.js";
 import {
   InventoryError,
+  Unresolved,
   createItem,
   deleteItem,
   getItem,
@@ -70,6 +71,28 @@ function serialiseItem(item: ItemWithAuthor) {
 }
 
 type SerialisedItem = ReturnType<typeof serialiseItem>;
+
+function quoted(values: string[]): string {
+  return values.map((value) => `"${value}"`).join(", ");
+}
+
+function unresolvedQuestion(failures: Unresolved[]): string {
+  const missing = failures.filter((f) => f.reason === "no_match").map((f) => f.q);
+  const crowded = failures.filter((f) => f.reason === "ambiguous").map((f) => f.q);
+  const vague = failures.filter((f) => f.reason === "no_changes").map((f) => f.q);
+  const sentences: string[] = [];
+
+  if (missing.length > 0) sentences.push(`Nothing in your inventory matches ${quoted(missing)}.`);
+  if (crowded.length > 0) sentences.push(`More than one item matches ${quoted(crowded)}.`);
+  if (vague.length > 0) sentences.push(`You did not say what to change about ${quoted(vague)}.`);
+  sentences.push("Nothing was saved — the whole sentence has to resolve.");
+
+  return sentences.join(" ");
+}
+
+function candidatesFrom(failures: Unresolved[]) {
+  return failures.flatMap((failure) => (failure.reason === "ambiguous" ? failure.items : []));
+}
 
 export type ItemGroup = {
   category: { id: string; name: string };
@@ -147,25 +170,25 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
           total: result.total
         });
       case "create_proposal":
-        return response.send({ type: "create_proposal", item: result.item });
+        return response.send({ type: "create_proposal", items: result.items });
       case "update_proposal":
         return response.send({
           type: "update_proposal",
-          item: serialiseItem(result.item),
-          changes: result.changes
+          updates: result.updates.map(({ item, changes }) => ({
+            item: serialiseItem(item),
+            changes
+          }))
         });
       case "delete_proposal":
-        return response.send({ type: "delete_proposal", item: serialiseItem(result.item) });
-      case "no_match":
         return response.send({
-          type: "question",
-          question: `Nothing in your inventory matches "${result.q}".`
-        });
-      case "ambiguous":
-        return response.send({
-          type: "question",
-          question: `"${result.q}" matches more than one item. Which one did you mean?`,
+          type: "delete_proposal",
           items: result.items.map(serialiseItem)
+        });
+      case "unresolved":
+        return response.send({
+          type: "question",
+          question: unresolvedQuestion(result.failures),
+          items: candidatesFrom(result.failures).map(serialiseItem)
         });
       default: {
         const unhandled: never = result;

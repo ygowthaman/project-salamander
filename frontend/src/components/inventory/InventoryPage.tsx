@@ -19,7 +19,12 @@ import {
   getInventoryGroupedByCategory,
   interpretInventoryText,
 } from "../../api/inventory";
-import { Interpretation, InventoryCategoryGroup, InventoryItem } from "../../types";
+import {
+  Interpretation,
+  InventoryCategoryGroup,
+  InventoryItem,
+  NewInventoryItem,
+} from "../../types";
 import { InventoryItemCard } from "./InventoryItemCard";
 import { InventoryItemForm, ItemFormMode } from "./InventoryItemForm";
 import { InventoryProposalsTable, Proposal } from "./InventoryProposalsTable";
@@ -35,16 +40,15 @@ function nextProposalKey(): string {
 }
 
 function proposalsFrom(result: Interpretation): Proposal[] {
-  const key = nextProposalKey();
-
   switch (result.type) {
     case "create_proposal":
-      return [{ key, op: "create", fields: result.item }];
-    case "update_proposal": {
-      const { item, changes } = result;
-      return [
-        {
-          key,
+      return result.items.map(
+        (fields): Proposal => ({ key: nextProposalKey(), op: "create", fields }),
+      );
+    case "update_proposal":
+      return result.updates.map(
+        ({ item, changes }): Proposal => ({
+          key: nextProposalKey(),
           op: "update",
           item,
           fields: {
@@ -55,14 +59,12 @@ function proposalsFrom(result: Interpretation): Proposal[] {
             attributes: changes.attributes ?? item.attributes,
             is_private: changes.is_private ?? item.is_private,
           },
-        },
-      ];
-    }
-    case "delete_proposal": {
-      const { item } = result;
-      return [
-        {
-          key,
+        }),
+      );
+    case "delete_proposal":
+      return result.items.map(
+        (item): Proposal => ({
+          key: nextProposalKey(),
           op: "delete",
           item,
           fields: {
@@ -73,12 +75,17 @@ function proposalsFrom(result: Interpretation): Proposal[] {
             attributes: item.attributes,
             is_private: item.is_private,
           },
-        },
-      ];
-    }
+        }),
+      );
     default:
       return [];
   }
+}
+
+function joinNames(names: string[]): string {
+  const last = names.slice(-1).join("");
+  const rest = names.slice(0, -1);
+  return rest.length === 0 ? last : `${rest.join(", ")} and ${last}`;
 }
 
 function receiptFor(result: Interpretation): string {
@@ -88,11 +95,11 @@ function receiptFor(result: Interpretation): string {
     case "items":
       return `${result.total} ${result.total === 1 ? "item" : "items"} matched.`;
     case "create_proposal":
-      return `Add ${result.item.name}?`;
+      return `Add ${joinNames(result.items.map((item) => item.name))}?`;
     case "update_proposal":
-      return `Change ${result.item.name}?`;
+      return `Change ${joinNames(result.updates.map(({ item }) => item.name))}?`;
     case "delete_proposal":
-      return `Remove ${result.item.name}?`;
+      return `Remove ${joinNames(result.items.map((item) => item.name))}?`;
   }
 }
 
@@ -106,6 +113,8 @@ export function InventoryPage() {
 
   const [formMode, setFormMode] = useState<ItemFormMode>("create");
   const [selected, setSelected] = useState<InventoryItem | null>(null);
+  const [prefill, setPrefill] = useState<NewInventoryItem | null>(null);
+  const [openedProposalKey, setOpenedProposalKey] = useState<string | null>(null);
 
   const [proposals, setProposals] = useState<Proposal[]>([]);
 
@@ -116,6 +125,33 @@ export function InventoryPage() {
   function openForm(mode: ItemFormMode, item: InventoryItem | null) {
     setFormMode(mode);
     setSelected(item);
+    setPrefill(null);
+    setOpenedProposalKey(null);
+  }
+
+  function openProposal(proposal: Proposal) {
+    setOpenedProposalKey(proposal.key);
+
+    switch (proposal.op) {
+      case "create":
+        setFormMode("create");
+        setSelected(null);
+        setPrefill({ ...proposal.fields });
+        return;
+      case "update":
+        setFormMode("edit");
+        setSelected(proposal.item);
+        setPrefill({ ...proposal.fields });
+        return;
+      case "delete":
+        setFormMode("view");
+        setSelected(proposal.item);
+        setPrefill(null);
+    }
+  }
+
+  function dismissProposal(key: string) {
+    setProposals((pending) => pending.filter((proposal) => proposal.key !== key));
   }
 
   const load = useCallback(async () => {
@@ -230,7 +266,9 @@ export function InventoryPage() {
           <InventoryItemForm
             mode={formMode}
             item={selected}
+            values={prefill}
             onSaved={() => {
+              if (openedProposalKey) dismissProposal(openedProposalKey);
               openForm("create", null);
               void load();
             }}
@@ -239,8 +277,10 @@ export function InventoryPage() {
 
           <InventoryProposalsTable
             proposals={proposals}
+            onView={openProposal}
+            onDismiss={dismissProposal}
             onCommitted={(key) => {
-              setProposals((pending) => pending.filter((proposal) => proposal.key !== key));
+              dismissProposal(key);
               void load();
             }}
           />

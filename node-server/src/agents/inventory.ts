@@ -17,24 +17,25 @@ const proposedChanges = z.object({
   is_private: inventoryItem.shape.is_private.nullable()
 }).strict();
 
-const itemSelector = {
+const itemSelector = z.object({
   q: inventoryItem.shape.name,
   category_id: inventoryItem.shape.category_id.nullable()
-};
+}).strict();
+
+const proposedUpdate = itemSelector.extend({ changes: proposedChanges }).strict();
 
 export const interpretation = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("create_item"),
-    item: proposedItem
+    items: z.array(proposedItem).min(1)
   }).strict(),
   z.object({
     type: z.literal("update_item"),
-    ...itemSelector,
-    changes: proposedChanges
+    updates: z.array(proposedUpdate).min(1)
   }).strict(),
   z.object({
     type: z.literal("delete_item"),
-    ...itemSelector
+    targets: z.array(itemSelector).min(1)
   }).strict(),
   z.object({
     type: z.literal("find_items"),
@@ -55,13 +56,19 @@ function instructions(categories: Category[]) {
   return `You interpret one sentence from an inventory app.
   Categories for this sentence:
   ${categories.map((c) => `${c.id} ${c.name}`).join("\n")}
-  Use create_item when the sentence adds something to the inventory.
-  Use update_item when it changes something already in the inventory, and put only
-  the fields that change in changes, leaving every other field null.
-  Use delete_item when it removes something from the inventory entirely.
+  One sentence may name several things, and they all belong to one operation:
+  "add 1984 and Origin to books" is one create_item with two entries in items, and
+  "we need eggs, milk, bread" is one update_item with three entries in updates.
+  Use create_item when the sentence adds things to the inventory, one entry in items
+  per thing added.
+  Use update_item when it changes things already in the inventory, one entry in
+  updates per thing changed, and put only the fields that change in changes, leaving
+  every other field null.
+  Use delete_item when it removes things from the inventory entirely, one entry in
+  targets per thing removed.
   Use find_items when it asks what the items are available.
   Use question when the sentence is ambiguous, or names nothing in the category list,
-  or you are otherwise not able to resolve it to create_item or find_item.
+  or you are otherwise not able to resolve it to one of the other operations.
   category_id must be one of the ids in the categories list.
   For update_item and delete_item, q is the words the sentence used for the item.
   You do not know which items exist, so never invent one that was not named.

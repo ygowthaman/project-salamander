@@ -104,9 +104,14 @@ export type ProposedChanges = Partial<{
   is_private: boolean;
 }>;
 
+export interface ProposedUpdate {
+  item: InventoryItem;
+  changes: ProposedChanges;
+}
+
 export type Interpretation =
   | { type: "question"; question: string; items?: InventoryItem[] }
   | { type: "items"; items: InventoryItem[]; total: number }
-  | { type: "create_proposal"; item: ProposedItem }
-  | { type: "update_proposal"; item: InventoryItem; changes: ProposedChanges }
-  | { type: "delete_proposal"; item: InventoryItem };
+  | { type: "create_proposal"; items: ProposedItem[] }
+  | { type: "update_proposal"; updates: ProposedUpdate[] }
+  | { type: "delete_proposal"; items: InventoryItem[] };

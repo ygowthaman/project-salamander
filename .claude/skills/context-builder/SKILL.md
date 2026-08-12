@@ -1,6 +1,6 @@
 ---
 name: context-builder
-description: Use when asked to "build the context for X", "map the X module", "give me a context file for X", or to produce a codebase map / orientation file for a module or feature so a later session knows where to look. Produces a pointers-only map under docs/context/ — file locations, not descriptions of behaviour, schema, or design.
+description: Use when asked to "build the context for X", "map the X module", "give me a context file for X", or to produce a codebase map / orientation file for a module or feature so a later session knows where to look. Produces a pointers-only context file under docs/context/ — file locations, and nothing that could be read out of the code itself.
 ---
 
 # Context builder
@@ -11,39 +11,55 @@ alone can answer none — that is the design, not a shortfall.
 
 ## The one rule
 
-**Every line is a pointer. The answer is never in this file.**
+**Nothing in a context file may be anything that could be read out of the code.**
+
+Not a symbol name, not a signature, not a shape, not a behaviour. If a question can be answered by
+opening the file the line points at, the line must not answer it. What remains is the one thing
+the code cannot tell you until you have already found it: **where the file is**.
 
 Test each line before writing it: *could someone change the code without touching this line, and
 leave the line wrong?* If yes, the line is content — delete it. A path survives everything but a
-rename. A column list, a status, a behaviour note, a count — all rot silently, and a stale map is
-worse than none because it is trusted.
+rename. A symbol list, a column list, a status, a behaviour note, a count — all rot silently, and
+a stale map is worse than none because it is trusted.
 
 Corollary: **do not read files to describe them.** Read them to find out what imports what and
 which file owns which role, then write the paths and close them.
+
+## Symbol names are the trap
+
+Exported names are the tempting exception and the one that has actually gone wrong. They look
+harmless — short, factual, greppable — and they are the fastest thing in the repo to rot. A
+rename, a split, a deletion: each is a normal edit that leaves no reason to open the context file,
+so the wrong name survives every pass and is handed to the next session as fact.
+
+**So: no function, type, class, constant, route-handler or hook names. Anywhere. Including as
+grep seeds.** A grep seed is a symbol name with an excuse. The path is the seed — open the file
+and every name in it is correct by construction.
+
+> ✗ **`` [`services/inventory.ts`](…) `` → `interpretSentence`, `Interpreted`, `resolveNamedItem`**
+> Three names, each one rename away from being a lie, in a file nobody will reopen to check.
+
+> ✓ **Service · `` [`services/inventory.ts`](…) ``**
+> Points. Says nothing. Stays true until someone moves the file.
 
 ## Allowed on a line
 
 - A repo-relative link: `` [`inventory.ts`](../../node-server/src/db/schema/inventory.ts) ``
 - The **role** the file plays — schema, repository, service, route, client, component, mock,
   fixture. Structural, not behavioural.
-- An **exported symbol name**, as a grep seed
 - An **edge**: which file registers, imports, or is imported by which
+- A **handling convention** that no reading of the code reveals — "regenerate, never hand-edit"
 
 ## Banned on a line
 
-- Table names, column names, types, enum values, field lists, wire shapes
+- Exported symbol names of every kind — functions, types, classes, constants, components
+- Table names, column names, enum values, field lists, wire shapes
 - What a function does, validates, enforces, returns, or when it throws
+- Script and command names — point at `package.json` instead
 - Rationale, trade-offs, invariants, PRD prose, anything quoting `docs/PRD.md`
 - Status — "not implemented", "returns 501", "stubbed", "TODO", "partially wired"
 - Counts — "3 repositories", "the 8 tables"
 - "There is no X here" / "X deliberately lives elsewhere" (see [clean-and-update](../clean-and-update/SKILL.md))
-
-> ✗ **`inventory_items` holds `quantity`, `unit`, `added_by_user_id`; `par_level` lives on
-> `mandates` because an item record says nothing about buying the thing.**
-> Every clause is a fact the file already states, and every one of them can go stale.
-
-> ✓ **Tables · `` [`schema/inventory.ts`](…) `` — exported via `` [`schema/index.ts`](…) ``**
-> Points. Says nothing. Stays true until someone moves the file.
 
 ## Building one
 
@@ -67,23 +83,24 @@ which file owns which role, then write the paths and close them.
    link. Omit a layer entirely when the module has no file there — an empty section is a
    statement about absence.
 
-4. **Verify before reporting done.** Every link resolves; every named export still exists.
+4. **Verify before reporting done.** Every link resolves, and no line names a symbol.
 
    ```bash
-   grep -o '](\.\.[^)]*)' docs/context/INVENTORY_MAP.md | sed 's/^](//; s/)$//; s/#.*//' \
+   grep -o '](\.\.[^)]*)' docs/context/INVENTORY_CONTEXT.md | sed 's/^](//; s/)$//; s/#.*//' \
      | sort -u | while read -r p; do [ -e "docs/context/$p" ] || echo "DEAD: $p"; done
    ```
 
 ## Output
 
-Write to `docs/context/<MODULE>_MAP.md`, uppercase module name. Links are relative to that
+Write to `docs/context/<MODULE>_CONTEXT.md`, uppercase module name. Links are relative to that
 directory (`../../node-server/...`).
 
-Prefer a symbol name over an `#L42` anchor — line numbers rot on the next edit. Anchor to lines
-only when a file holds several unrelated things and no export name distinguishes them.
+Link to the file, never into it. `#L42` anchors rot on the next edit, and a symbol name is banned
+outright — so a file holding several unrelated things is pointed at whole, and its size is the
+signal that it wants splitting.
 
 ```markdown
-# Inventory — map
+# Inventory — context
 
 Pointers only; the linked file is the answer.
 
@@ -95,7 +112,7 @@ Pointers only; the linked file is the answer.
 | Barrel | [`db/schema/index.ts`](../../node-server/src/db/schema/index.ts) |
 | Migrations | [`node-server/drizzle/`](../../node-server/drizzle/) — regenerate, never hand-edit |
 | Repositories | [`inventoryItems.ts`](../../node-server/src/db/repositories/inventoryItems.ts), [`categories.ts`](../../node-server/src/db/repositories/categories.ts) |
-| Routes | [`api/inventory.ts`](../../node-server/src/api/inventory.ts) → `inventoryRoutes`, registered in [`app.ts`](../../node-server/src/app.ts) |
+| Routes | [`api/inventory.ts`](../../node-server/src/api/inventory.ts), registered in [`app.ts`](../../node-server/src/app.ts) |
 
 ## Frontend
 
@@ -112,10 +129,6 @@ Pointers only; the linked file is the answer.
 |---|---|
 | Household scoping | [`services/households.ts`](../../node-server/src/services/households.ts) |
 | Auth guard | [`auth/plugin.ts`](../../node-server/src/auth/plugin.ts) |
-
-## Grep seeds
-
-`inventory_items` · `inventoryItems` · `inventoryRoutes` · `/inventory`
 ```
 
 ## Refreshing

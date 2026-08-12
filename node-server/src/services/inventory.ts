@@ -23,19 +23,25 @@ function itemNotFound(): InventoryError {
   return new InventoryError(404, "That item no longer exists");
 }
 
-type ProposedItem = Extract<Interpretation, { type: "create_item" }>["item"];
-type ProposedChanges = Extract<Interpretation, { type: "update_item" }>["changes"];
+type ProposedItem = Extract<Interpretation, { type: "create_item" }>["items"][number];
+type ProposedUpdate = Extract<Interpretation, { type: "update_item" }>["updates"][number];
+type ProposedChanges = ProposedUpdate["changes"];
+type ItemSelector = { q: string; category_id: string | null };
 
 export type Changes = { [K in keyof ProposedChanges]?: NonNullable<ProposedChanges[K]> };
+
+export type Unresolved =
+  | { reason: "no_match"; q: string }
+  | { reason: "ambiguous"; q: string; items: ItemWithAuthor[] }
+  | { reason: "no_changes"; q: string }
 
 export type Interpreted =
   | { type: "question"; question: string }
   | { type: "items"; items: ItemWithAuthor[]; total: number }
-  | { type: "create_proposal"; item: ProposedItem }
-  | { type: "update_proposal"; item: ItemWithAuthor; changes: Changes }
-  | { type: "delete_proposal"; item: ItemWithAuthor }
-  | { type: "no_match"; q: string }
-  | { type: "ambiguous"; q: string; items: ItemWithAuthor[] }
+  | { type: "create_proposal"; items: ProposedItem[] }
+  | { type: "update_proposal"; updates: { item: ItemWithAuthor; changes: Changes }[] }
+  | { type: "delete_proposal"; items: ItemWithAuthor[] }
+  | { type: "unresolved"; failures: Unresolved[] }
 
 export type CategoryGroup = {
   category: { id: string; name: string };
@@ -97,26 +103,40 @@ export async function deleteItem(actor: User, id: string): Promise<void> {
 const candidateLimit = 5;
 
 type Resolution =
-  | { status: "one"; item: ItemWithAuthor }
-  | { status: "none" }
-  | { status: "many"; items: ItemWithAuthor[] }
+  | { resolved: true; item: ItemWithAuthor }
+  | { resolved: false; failure: Unresolved }
 
-async function resolveNamedItem(
-  actor: User,
-  q: string,
-  categoryId: string | null
-): Promise<Resolution> {
+async function resolveSelector(actor: User, selector: ItemSelector): Promise<Resolution> {
+  const { q } = selector;
   const { items, total } = await itemsRepo.listItems(db, actor.householdId, actor.id, {
     q,
-    categoryId: categoryId ?? undefined,
+    categoryId: selector.category_id ?? undefined,
     limit: candidateLimit,
     offset: 0
   });
 
   const [only] = items;
-  if (!only) return { status: "none" };
-  if (total > 1) return { status: "many", items };
-  return { status: "one", item: only };
+  if (!only) return { resolved: false, failure: { reason: "no_match", q } };
+  if (total > 1) return { resolved: false, failure: { reason: "ambiguous", q, items } };
+  return { resolved: true, item: only };
+}
+
+async function resolveEvery<T extends ItemSelector>(actor: User, selectors: T[]) {
+  const outcomes = await Promise.all(
+    selectors.map(async (selector) => ({
+      selector,
+      resolution: await resolveSelector(actor, selector)
+    }))
+  );
+
+  return {
+    failures: outcomes.flatMap(({ resolution }) =>
+      resolution.resolved ? [] : [resolution.failure]
+    ),
+    resolved: outcomes.flatMap(({ selector, resolution }) =>
+      resolution.resolved ? [{ selector, item: resolution.item }] : []
+    )
+  };
 }
 
 function withoutUnchanged(changes: ProposedChanges): Changes {
@@ -140,26 +160,32 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
     case "create_item":
       return {
         type: "create_proposal",
-        item: result.item
+        items: result.items
       }
     case "update_item": {
-      const changes = withoutUnchanged(result.changes);
-      if (Object.keys(changes).length === 0) return null;
+      const requested = result.updates.map((update) => ({
+        ...update,
+        changes: withoutUnchanged(update.changes)
+      }));
+      const unchanged = requested
+        .filter(({ changes }) => Object.keys(changes).length === 0)
+        .map(({ q }): Unresolved => ({ reason: "no_changes", q }));
 
-      const resolved = await resolveNamedItem(actor, result.q, result.category_id);
-      if (resolved.status === "none") return { type: "no_match", q: result.q };
-      if (resolved.status === "many") {
-        return { type: "ambiguous", q: result.q, items: resolved.items };
+      const { resolved, failures } = await resolveEvery(actor, requested);
+      if (failures.length + unchanged.length > 0) {
+        return { type: "unresolved", failures: [...failures, ...unchanged] };
       }
-      return { type: "update_proposal", item: resolved.item, changes };
+
+      return {
+        type: "update_proposal",
+        updates: resolved.map(({ item, selector }) => ({ item, changes: selector.changes }))
+      };
     }
     case "delete_item": {
-      const resolved = await resolveNamedItem(actor, result.q, result.category_id);
-      if (resolved.status === "none") return { type: "no_match", q: result.q };
-      if (resolved.status === "many") {
-        return { type: "ambiguous", q: result.q, items: resolved.items };
-      }
-      return { type: "delete_proposal", item: resolved.item };
+      const { resolved, failures } = await resolveEvery(actor, result.targets);
+      if (failures.length > 0) return { type: "unresolved", failures };
+
+      return { type: "delete_proposal", items: resolved.map(({ item }) => item) };
     }
     case "find_items": {
       const { items, total } = await itemsRepo.listItems(db, actor.householdId, actor.id, {
