@@ -14,7 +14,8 @@ them. [`PRD.md`](PRD.md) specifies *what* the product does and why.
 > [Known gaps](#known-gaps) lists what is missing in detail.
 
 **What runs today:** authentication (email + password and Google OAuth, enforced
-on every route), households with their routes and settings UI, `GET /health`, and
+on every route), households with their routes and settings UI, categories end to
+end — routes, service, repository and the Organize surface — `GET /health`, and
 the full domain schema — `households`, `users`, `categories`, `inventory_items`,
 `mandates`. The inventory routes exist with their validation
 and serialisation wired, but every handler returns 501: the service layer beneath
@@ -210,8 +211,13 @@ node-server/src/
 │   ├── households.ts      /households/* — create, members, roles, deletion
 │   ├── inventory.ts       /inventory/items/* — zod + serialisers wired;
 │   │                      every handler returns 501 pending the service layer
-│   ├── categories.ts      (planned) /categories/* — CRUD behind Organize
+│   ├── categories.ts      /categories/* — CRUD, plus search behind Organize
 │   └── websocket.ts       (planned) the push channel
+├── services/             Policy layer: takes the session actor, owns `db`,
+│   │                      throws the error types api/ maps to status codes
+│   ├── households.ts      Membership, roles, provisioning, departure
+│   ├── categories.ts      Household-scoped CRUD; duplicate and in-use refusals
+│   └── inventory.ts       Interpretation: resolves the agent's selectors to rows
 └── db/
     ├── client.ts          pg.Pool + Drizzle instance; Db / DbExecutor types
     ├── schema/            Drizzle tables, one module per domain, barrelled
@@ -228,7 +234,9 @@ node-server/src/
         ├── users.ts          Query logic for the users table
         ├── oauthAccounts.ts  Provider identity links
         ├── authSessions.ts   Refresh-token records and revocation
-        └── households.ts     Membership, roles, provisioning and deletion
+        ├── households.ts     Membership, roles, provisioning and deletion
+        ├── categories.ts     CRUD, name search, duplicate and in-use detection
+        └── inventoryItems.ts Visibility filtering, attribution, category counts
 ```
 
 **Module order in `schema/` follows the dependency graph, which is acyclic and
@@ -679,27 +687,25 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 
 ## Known gaps
 
-- **The inventory service layer does not exist.** The `categories` and
-  `inventoryItems` repositories are written — household-scoped, visibility
-  filtered, attribution joined — but nothing calls them: `api/inventory.ts` holds
-  the zod schemas, serialisers and route registrations, and **every handler still
+- **The inventory service layer does not exist.** The `inventoryItems` repository
+  is written — household-scoped, visibility filtered, attribution joined — but
+  nothing calls it except `countItemsInCategory`: `api/inventory.ts` holds the
+  zod schemas, serialisers and route registrations, and **every handler still
   returns 501**.
-- **None of the inventory repositories has run against Postgres.** `npm test` is
-  deliberately database-free, and the migrations have never been applied
-  anywhere, so the visibility filter, the `ON DELETE RESTRICT` refusal and the
-  attribution join are verified as types and compiled SQL, not as behaviour.
+- **The inventory repository has not run against Postgres.** `npm test` is
+  deliberately database-free, so the visibility filter, the `ON DELETE RESTRICT`
+  refusal and the attribution join are verified as types and compiled SQL, not as
+  behaviour. The categories repository has run — the Organize surface exercises
+  its reads and writes — but its case-insensitive unique index and its in-use
+  refusal are reached only through the UI, never by a test.
 - **The inventory UI renders against a mock.** `InventoryPage` and
   `InventoryItemCard` read `api/mocks/inventory.groupedByCategory.json`, and the
   natural-language box posts to a `/inventory/interpret` that has no server side.
   Flipping `USE_MOCKS` in `frontend/src/api/inventory.ts` is the whole migration
   once the routes are wired.
-- **The categories UI has no server behind it.** The Organize module's category
-  list calls `/categories` through `frontend/src/api/categories.ts`, and no such
-  routes are registered — every call 404s. The repository layer beneath them is
-  complete, including duplicate-name and in-use detection.
-- **The migration has never been applied to a live Postgres.** Doing so is the
-  first real test of the migration path and should happen before anything is
-  stacked on top of it.
+- **The migration has been applied to a development Postgres only.** The schema
+  and the categories path run there; nothing has verified the migration against
+  the deployed database.
 - **Database behaviour has no test lane.** `npm test` covers the guard layer
   (tokens, PKCE, CSRF, Origin, auth gating) and is deliberately database-free, so
   household scoping, the case-insensitive unique index, `ON DELETE RESTRICT` and
@@ -795,14 +801,11 @@ places the inventory code still contradicts the PRD are listed in
 
 1. **The inventory service layer** — behind the routes that already exist, with
    the visibility filter expressed once in the repository layer.
-2. **Categories management** — the UI is built and calls `/categories`; the four
-   routes behind it are not, so the surface the inventory picker reads from is
-   one thin route file over the existing repository.
-3. **The push channel** — per-user socket, per-household fan-out, and a frontend
+2. **The push channel** — per-user socket, per-household fan-out, and a frontend
    client that reconnects.
-4. **The interpretation exchange** — the natural-language path for add, read,
+3. **The interpretation exchange** — the natural-language path for add, read,
    update, delete and stock, with the ten-turn clarification loop.
-5. **Bill capture, budgeting and statistics** — the remaining product
+4. **Bill capture, budgeting and statistics** — the remaining product
    capabilities.
-6. **Reorder** — mandates beyond their levels, plus the constraint and scheduling
+5. **Reorder** — mandates beyond their levels, plus the constraint and scheduling
    layers that hang off them.

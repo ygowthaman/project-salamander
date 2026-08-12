@@ -6,6 +6,13 @@ export async function listCategories(): Promise<Category[]> {
   return categories;
 }
 
+export async function searchCategories(name: string): Promise<Category[]> {
+  const { categories } = await apiFetch<{ categories: Category[] }>(
+    `/categories/search?name=${encodeURIComponent(name)}`,
+  );
+  return categories;
+}
+
 export async function createCategory(name: string): Promise<Category> {
   return apiFetch<Category>("/categories", { method: "POST", body: { name } });
 }

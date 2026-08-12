@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Group,
+  Loader,
   Paper,
   Skeleton,
   Stack,
@@ -18,10 +19,12 @@ import {
   deleteCategory,
   listCategories,
   renameCategory,
+  searchCategories,
 } from "../../api/categories";
 import { Category } from "../../types";
 
 const NAME_MAX_LENGTH = 100;
+const MATCH_DEBOUNCE_MS = 1000;
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -38,6 +41,7 @@ export function CategoriesSection() {
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const [matches, setMatches] = useState<Category[] | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -54,20 +58,57 @@ export function CategoriesSection() {
     }
   }, []);
 
+  const typedName = newName.trim();
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    setMatches(null);
+    if (!typedName) {
+      void load();
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      searchCategories(typedName)
+        .then((found) => !cancelled && setMatches(byName(found)))
+        .catch(() => !cancelled && setMatches([]));
+    }, MATCH_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [typedName, load]);
+
+  const exactMatch =
+    matches?.some((category) => category.name.toLowerCase() === typedName.toLowerCase()) ?? false;
+  const checkingName = typedName.length > 0 && matches === null;
+  const canSave = typedName.length > 0 && matches !== null && !exactMatch;
+  const shown = matches ?? categories;
+
+  function replaceInLists(renamed: Category) {
+    const swap = (list: Category[] | null) =>
+      list && byName(list.map((category) => (category.id === renamed.id ? renamed : category)));
+    setCategories(swap);
+    setMatches(swap);
+  }
+
+  function dropFromLists(id: string) {
+    const drop = (list: Category[] | null) =>
+      list && list.filter((category) => category.id !== id);
+    setCategories(drop);
+    setMatches(drop);
+  }
 
   async function handleAdd(event: FormEvent) {
     event.preventDefault();
     const name = newName.trim();
-    if (!name || adding) return;
+    if (!canSave || adding) return;
 
     setAddError(null);
     setAdding(true);
     try {
-      const created = await createCategory(name);
-      setCategories((current) => byName([...(current ?? []), created]));
+      await createCategory(name);
       setNewName("");
     } catch (error) {
       setAddError(errorText(error, "Could not add that category."));
@@ -94,10 +135,7 @@ export function CategoriesSection() {
     setRowError(null);
     setBusyId(id);
     try {
-      const renamed = await renameCategory(id, name);
-      setCategories((current) =>
-        byName((current ?? []).map((category) => (category.id === id ? renamed : category))),
-      );
+      replaceInLists(await renameCategory(id, name));
       cancelEdit();
     } catch (error) {
       setRowError(errorText(error, "Could not rename that category."));
@@ -113,7 +151,7 @@ export function CategoriesSection() {
     setBusyId(id);
     try {
       await deleteCategory(id);
-      setCategories((current) => (current ?? []).filter((category) => category.id !== id));
+      dropFromLists(id);
     } catch (error) {
       setRowError(errorText(error, "Could not delete that category."));
     } finally {
@@ -138,8 +176,28 @@ export function CategoriesSection() {
               error={addError}
               maxLength={NAME_MAX_LENGTH}
               disabled={adding}
+              rightSectionPointerEvents="all"
+              rightSectionWidth={checkingName ? 62 : 36}
+              rightSection={
+                newName ? (
+                  <Group gap={4} wrap="nowrap">
+                    {checkingName && <Loader size="xs" />}
+                    <Tooltip label="Clear">
+                      <ActionIcon
+                        variant="subtle"
+                        color="gray"
+                        size="sm"
+                        aria-label="Clear category search"
+                        onClick={() => setNewName("")}
+                      >
+                        <IconX size={14} stroke={1.6} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                ) : null
+              }
             />
-            <Button type="submit" loading={adding} disabled={!newName.trim()}>
+            <Button type="submit" loading={adding} disabled={!canSave}>
               Save
             </Button>
           </Group>
@@ -169,19 +227,21 @@ export function CategoriesSection() {
         </Alert>
       )}
 
-      {!categories && !loadError && <Skeleton height={160} radius="md" />}
+      {!shown && !loadError && <Skeleton height={160} radius="md" />}
 
-      {categories?.length === 0 && (
+      {shown?.length === 0 && (
         <Text size="sm" c="dimmed">
-          No categories yet — add your first one above.
+          {typedName
+            ? `Nothing matches “${typedName}” — Save adds it as a new category.`
+            : "No categories yet — add your first one above."}
         </Text>
       )}
 
-      {categories && categories.length > 0 && (
+      {shown && shown.length > 0 && (
         <Paper withBorder radius="md">
           <Table verticalSpacing="sm" horizontalSpacing="md">
             <Table.Tbody>
-              {categories.map((category) => {
+              {shown.map((category) => {
                 const editing = editingId === category.id;
                 return (
                   <Table.Tr key={category.id}>

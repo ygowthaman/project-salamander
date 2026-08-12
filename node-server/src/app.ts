@@ -4,6 +4,7 @@ import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 
 import { authRoutes } from "./api/auth.js";
+import { categoryRoutes } from "./api/categories.js";
 import { healthRoutes } from "./api/health.js";
 import { householdRoutes } from "./api/households.js";
 import { inventoryRoutes } from "./api/inventory.js";
@@ -34,6 +35,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   await app.register(authRoutes);
   await app.register(householdRoutes);
   await app.register(inventoryRoutes);
+  await app.register(categoryRoutes);
 
   return app;
 }

@@ -407,6 +407,8 @@ Because items point at the category record and not at its name, **renaming a cat
 
 **Categories are managed from the Organize module** (§2.2.11), on a surface that does one thing: a text box and a save button add a category, and the list below it shows every category the household has. Each row can be renamed in place or deleted. There is nothing else to set, because a category is a name and nothing else.
 
+**The box searches as it is typed.** What the user writes narrows the list below to the categories whose names contain it, so the thing they are about to add is checked against what already exists while they are still writing it — a household with forty categories cannot be expected to remember whether *Cleaning* is already one of them. Save is refused for a name that already exists, and the existing category is standing in the list underneath as the reason. Clearing the box restores the full list.
+
 **A category that still has items in it cannot be deleted.** The attempt is refused and the user is told how many items stand in the way, so no delete can quietly take a collection with it. Emptying or re-filing those items is the only route to removing it. Renaming carries no such restriction — items point at the record, not the name (above).
 
 *TBD: whether a new household starts with any categories at all,* or with an empty list the first item has to fill.

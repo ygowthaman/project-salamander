@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, sql } from "drizzle-orm";
 import type { DbExecutor } from "../client.js";
 import { categories, type Category } from "../schema/index.js";
 
@@ -33,6 +33,19 @@ export async function getCategory(
     .where(and(eq(categories.id, id), eq(categories.householdId, householdId)))
     .limit(1);
   return row ?? null;
+}
+
+export async function findCategoriesByName(
+  db: DbExecutor,
+  householdId: string,
+  name: string,
+): Promise<Category[]> {
+  const pattern = `%${name.replace(/[\\%_]/g, "\\$&")}%`;
+  return db
+    .select()
+    .from(categories)
+    .where(and(eq(categories.householdId, householdId), ilike(categories.name, pattern)))
+    .orderBy(asc(sql`lower(${categories.name})`));
 }
 
 export async function categoryExists(
