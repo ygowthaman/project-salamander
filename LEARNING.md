@@ -46,72 +46,109 @@ history of completed steps. Git holds the history; this file holds the present.
 
 # Current step
 
-## Step 4 — The route, and proving it works end to end
+## Step 5 — One sentence, many items, and the exchange that resolves them
 
-**Concept:** the trust boundary in code. The agent returns a *proposal*; the layers
-below it are where session identity is added back, where a proposal becomes SQL,
-and where nothing is written yet.
+**Concept:** the unit of interpretation is the **sentence**, not the item. A
+sentence can name three things, and either all three resolve or none of them
+commit. Everything else in this step follows from that: the union goes plural, the
+confirmation table grows per-row controls, and the clarification exchange exists so
+a sentence that only half resolves has somewhere to go.
 
-### Where each concern lives
+### Carried from step 4
 
-- `agents/client.ts` — the one Anthropic client, the default model, and
-  `interpretAs`, which turns a sentence plus a Zod schema into a typed object or
-  `null`. Every agent shares it, so nothing can fork the connection.
-- `agents/inventory.ts` — the `interpretation` union and the prompt. No transport.
-- `services/inventory.ts` — owns `db` and the repositories, resolves the model's
-  selectors to real rows, returns domain objects.
-- `api/inventory.ts` — HTTP only: parse the body, serialise rows to the wire
-  shape, choose status codes, hold user-facing copy.
+Two checkpoints never ran. The write routes that blocked them are live now, so both
+are cheap:
 
-`householdId` and `id` come off the session and travel as *arguments*. They never
-reach the model — not on the way out (no slot in the schema) and not on the way in
-(the prompt names no household). A prompt injection can change what the model
-returns; it cannot reach the second argument of `listItems`.
+- [ ] A `find_items` sentence returns actual rows, scoped to my household
+- [ ] An unparseable answer returns 422 with `interpretationFailed`
 
-`create_item`, `update_item` and `delete_item` all return proposals a human
-confirms. Only `find_items` executes, because a read cannot persist a mistake.
+Chase the `401` on `GET /inventory/items/grouped` before either. The app is being
+served from `http://192.168.142.129:5173`, and `SameSite=Lax` cookies with no
+`COOKIE_DOMAIN` behave differently from a `localhost` origin — neither checkpoint
+can pass if the session never arrives.
 
-### What is left to close this step
+### 1. The union goes plural
 
-The agent is verified against the live model through `npm run check:interpret`.
-The route is not verified at all — nothing has exercised the session, the SQL, or
-the status codes.
+In `agents/inventory.ts`, `create_item` carries one `item` and `update_item` one
+`q` + `changes`. But *"Add 1984 and Origin to books"* is one sentence and two
+items, and *"we need eggs, milk, bread"* is three updates.
 
-Categories are real end to end. `categoryRoutes` is registered in `app.ts`, and
-`CategoriesSection` on the household page creates, renames and deletes them. Make
-the categories the sentences will name through the UI; `interpretSentence` reads
-them back with `listCategories` and renders them into the prompt, so a sentence
-resolves to a `category_id` instead of falling through to `question`.
+- `create_item` → `items: proposedItem[]`
+- `update_item` → an array of `{ q, category_id, changes }`
+- The prompt has to say so, and say that one sentence may name several things.
 
-The inventory UI is off its fixtures. `frontend/src/api/inventory.ts` calls the
-real routes, `GET /inventory/items/grouped` serves rows through
-`listItemsByCategory`, and the interpret response is typed as the discriminated
-union the server actually sends. So the textarea on the inventory page carries a
-real session cookie into the agent, and the page reloads from the database after.
+Then follow it down: `services/inventory.ts` resolves each selector separately, so
+`resolveNamedItem` runs per element; `Interpreted` carries arrays; `api/inventory.ts`
+serialises them; `frontend/src/types/index.ts` widens `Interpretation`.
 
-One neighbour still blocks a clean run: every write route answers 501, so nothing
-can put an item in the table. Insert item rows directly to see rows come back.
+The frontend is already ready — `proposalsFrom` returns `Proposal[]` and the
+confirmation table renders N rows.
 
-Then drive it from the UI: an add, a query, and something ambiguous.
+**The rule that makes this more than a shape change:** if *any* element fails to
+resolve, the whole sentence goes into clarification rather than committing the
+parts that did (PRD §2.5.8). Half a sentence landing leaves me to work out which
+half.
+
+**Decide `delete_item` too.** *"Remove 1984 and Origin"* is the same problem, and a
+union where two of three write operations are plural is a shape every reader has to
+remember twice.
+
+### 2. View and Dismiss on the confirmation table
+
+- **Dismiss** drops the row. It touches no server.
+- **View** loads the row into the form and expands it, so a partially correct parse
+  can be corrected before it is saved.
+
+**The thing to notice:** `InventoryItemForm` prefills only from `item`, and its
+effect clears every field when `item` is null. A `create` proposal is a set of
+*fields*, not a row — so View on one is the create form with the values filled in,
+and there is nothing to prefill from. The form needs a second prop for that:
+
+```ts
+values: NewInventoryItem | null;   // prefill; what a create proposal supplies
+item: InventoryItem | null;        // the row, when one exists
+```
+
+View on a create proposal passes `values` with `item` null and the mode left at
+`create`, so Save posts as it always does. View on an update proposal passes the
+real row.
+
+### 3. The ten-turn exchange
+
+`exchange_id` is parsed in `interpretBody` and ignored. Settle the open question
+first: do the turns live server-side keyed by `exchange_id`, or come back from the
+client on each request?
+
+`ARCHITECTURE.md` answers it — in memory, server-side, reaped on a timer, with
+session affinity as a consequence rather than a correctness requirement. **A
+client-supplied turn count is not a count:** the cap is the only thing bounding
+cost, so it cannot be a number the caller sends.
+
+Then the left pane renders it (conflict **C12**): a pending question, the turns so
+far, and the **server-written** ten-turn failure that points at the form. A model
+that has just failed ten times to understand the request is not the thing to
+explain the failure.
 
 ### Checkpoint
 
-- [ ] A `find_items` sentence returns actual rows, scoped to my household
-- [ ] A `create_item` sentence returns a proposal and writes nothing
-- [ ] An unparseable answer returns 422 with `interpretationFailed`
-- [ ] I can say why `create_item` doesn't commit, and where `household_id` enters
-      the flow
+- [ ] *"Add 1984 and Origin to books"* produces two rows in the confirmation table
+- [ ] *"we need eggs, milk, bread"* produces three update rows
+- [ ] A sentence where one item resolves and one does not writes nothing, and asks
+- [ ] View on a proposal opens it in the form; Dismiss removes it
+- [ ] An exchange that never resolves fails at turn ten with server-written copy
+- [ ] I can say why the turn counter lives on the server and not in the request
 
-Then ask for step 5 — the commit path, so a proposal a human confirms has
-somewhere to land: `POST /inventory/item` and the rest of the 501s in
-`api/inventory.ts`.
+Build them in that order. The plural shape changes the wire everything else in this
+step reads, so layering the exchange onto a shape still in flux means debugging both
+at once.
 
-Two loose ends waiting behind it:
+Then ask for step 6.
+
+### Loose ends
 
 - `agents/category.ts` exists and `npm run check:interpret` exercises it, but no
   route calls `interpretCategory`, and its prompt describes a `q` selector the
   schema does not have — the schema selects on `name`.
-- The ten-turn clarification exchange is unbuilt; `exchange_id` is parsed and
-  ignored. `PRD.md:470-478` settles the cap and says the exchange is ephemeral,
-  leaving one open question: whether the turns live server-side keyed by
-  `exchange_id`, or come back from the client on each request.
+- `GET /inventory/items` (the flat list) and `POST /inventory/items/:id/stock` still
+  answer 501.
+- `npm test` runs `tsx test/auth-guards.ts`, and that file is not in the tree.
