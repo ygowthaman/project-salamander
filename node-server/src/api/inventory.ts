@@ -5,7 +5,6 @@ import type { ItemWithAuthor } from "../db/repositories/inventoryItems.js";
 import { inventoryItem } from "../domain/inventory.js";
 import {
   InventoryError,
-  Unresolved,
   createItem,
   deleteItem,
   getItem,
@@ -53,7 +52,10 @@ const interpretBody = z.object({
   exchange_id: z.string().uuid().optional()
 });
 
-const interpretationFailed = "This could not be understood. Try using a the form instead";
+const interpretationFailed = "This could not be understood. Try using the form instead";
+
+const exchangeExhausted =
+  "After ten tries this still could not be understood. Add it with the form instead";
 
 function serialiseItem(item: ItemWithAuthor) {
   return {
@@ -71,28 +73,6 @@ function serialiseItem(item: ItemWithAuthor) {
 }
 
 type SerialisedItem = ReturnType<typeof serialiseItem>;
-
-function quoted(values: string[]): string {
-  return values.map((value) => `"${value}"`).join(", ");
-}
-
-function unresolvedQuestion(failures: Unresolved[]): string {
-  const missing = failures.filter((f) => f.reason === "no_match").map((f) => f.q);
-  const crowded = failures.filter((f) => f.reason === "ambiguous").map((f) => f.q);
-  const vague = failures.filter((f) => f.reason === "no_changes").map((f) => f.q);
-  const sentences: string[] = [];
-
-  if (missing.length > 0) sentences.push(`Nothing in your inventory matches ${quoted(missing)}.`);
-  if (crowded.length > 0) sentences.push(`More than one item matches ${quoted(crowded)}.`);
-  if (vague.length > 0) sentences.push(`You did not say what to change about ${quoted(vague)}.`);
-  sentences.push("Nothing was saved — the whole sentence has to resolve.");
-
-  return sentences.join(" ");
-}
-
-function candidatesFrom(failures: Unresolved[]) {
-  return failures.flatMap((failure) => (failure.reason === "ambiguous" ? failure.items : []));
-}
 
 export type ItemGroup = {
   category: { id: string; name: string };
@@ -155,14 +135,26 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
     if (!parsed.success) {
       return response.code(422).send({ detail: parsed.error.issues });
     }
-    const result = await interpretSentence(request.user!, parsed.data.text);
+    const result = await interpretSentence(
+      request.user!,
+      parsed.data.text,
+      parsed.data.exchange_id
+    );
     if (!result) {
       return response.code(422).send({ detail: interpretationFailed });
     }
 
     switch (result.type) {
       case "question":
-        return response.send({ type: "question", question: result.question });
+        return response.send({
+          type: "question",
+          question: result.question,
+          items: result.candidates.map(serialiseItem),
+          exchange_id: result.exchangeId,
+          turns_remaining: result.turnsRemaining
+        });
+      case "exhausted":
+        return response.code(422).send({ detail: exchangeExhausted });
       case "items":
         return response.send({
           type: "items",
@@ -183,12 +175,6 @@ export const inventoryRoutes: FastifyPluginAsync = async (app) => {
         return response.send({
           type: "delete_proposal",
           items: result.items.map(serialiseItem)
-        });
-      case "unresolved":
-        return response.send({
-          type: "question",
-          question: unresolvedQuestion(result.failures),
-          items: candidatesFrom(result.failures).map(serialiseItem)
         });
       default: {
         const unhandled: never = result;

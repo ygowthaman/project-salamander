@@ -13,6 +13,7 @@ Pointers only; the linked file is the answer.
 | Migration runner | [`db/migrate.ts`](../../node-server/src/db/migrate.ts), [`db/reset-migrations.ts`](../../node-server/src/db/reset-migrations.ts) |
 | Repository | [`db/repositories/inventoryItems.ts`](../../node-server/src/db/repositories/inventoryItems.ts) |
 | Service | [`services/inventory.ts`](../../node-server/src/services/inventory.ts) |
+| Exchange store | [`services/exchanges.ts`](../../node-server/src/services/exchanges.ts) |
 | Domain schema | [`domain/inventory.ts`](../../node-server/src/domain/inventory.ts) |
 | Agent | [`agents/inventory.ts`](../../node-server/src/agents/inventory.ts) |
 | Model client | [`agents/client.ts`](../../node-server/src/agents/client.ts) |
@@ -53,4 +54,3 @@ Pointers only; the linked file is the answer.
 |---|---|
 | Product | [`docs/PRD.md`](../PRD.md) |
 | System | [`docs/ARCHITECTURE.md`](../ARCHITECTURE.md) |
-| Conflicts | [`INVENTORY_CONFLICTS.md`](INVENTORY_CONFLICTS.md) |

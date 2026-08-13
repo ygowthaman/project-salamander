@@ -19,10 +19,11 @@ Read next:
   not built yet.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — the as-built GCP runbook.
 
-> **Current state: accounts, and not much else.** Sign in with Google or with
-> email + password, on a foundation of Fastify, Postgres and Drizzle. Inventory
-> is the next thing to land; the interpreter above is still the target rather
-> than the present tense.
+> **Current state: accounts, categories and inventory.** Sign in with Google or
+> with email + password, on a foundation of Fastify, Postgres and Drizzle, then
+> add, change, remove and search items either through the form or by typing a
+> sentence. The sentence above is the present tense; the cart and the live push
+> to other members are not.
 
 | Piece | Stack | Local URL |
 |---|---|---|
@@ -37,8 +38,8 @@ Read next:
 - **Node.js 20+** — the server runs on 18, but `drizzle-kit` (used to generate
   migrations) requires 20
 - **PostgreSQL 16** — installed locally (below)
-- **An Anthropic API key** — https://console.anthropic.com. Not needed to run
-  what exists today; the interpretation layer will want it.
+- **An Anthropic API key** — https://console.anthropic.com. Required for the
+  natural-language box; the form path and everything else run without it.
 
 ---
 
@@ -73,7 +74,7 @@ password `postgres`, database `salaman_db` — matching the `DATABASE_URL` in
 
 ```bash
 cd node-server
-cp .env.example .env      # defaults work locally; no API key needed yet
+cp .env.example .env      # defaults work locally; add ANTHROPIC_API_KEY for the sentence box
 npm install
 npm run dev
 ```
@@ -96,7 +97,8 @@ curl http://localhost:8000/health
 ```
 
 ```bash
-npm test        # guard-layer checks: tokens, PKCE, CSRF, Origin, auth gating — needs no database
+npm run check:agent      # one round-trip to Claude, to prove the key and model work
+npm run check:interpret  # a fixed set of sentences through both interpreters
 ```
 
 ### 3. Frontend
@@ -108,8 +110,8 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:5173**. You get the login screen, and a placeholder shell
-once signed in.
+Open **http://localhost:5173**. You get the login screen, and once signed in the
+inventory, categories and household settings.
 
 ---
 
@@ -119,7 +121,7 @@ once signed in.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | Unused until the interpretation layer lands; read automatically by the Anthropic SDK when it does |
+| `ANTHROPIC_API_KEY` | — | Required by `/inventory/interpret`; read automatically by the Anthropic SDK |
 | `DATABASE_URL` | — | Required. `postgresql://postgres:postgres@localhost:5432/salaman_db` |
 | `ALLOWED_ORIGINS` | `http://localhost:5173` | CORS origin(s), comma-separated. Credentialed CORS — must name the origin exactly, no wildcards |
 | `PORT` | `8000` | Cloud Run sets this automatically in production |
@@ -174,8 +176,9 @@ sudo -u postgres psql -c "DROP DATABASE salaman_db;"   # rarely needed — db:re
 
 ## Troubleshooting
 
-**Signed in, but the app looks empty.** That is the current state — the inventory
-UI has not landed.
+**The sentence box answers "This could not be understood."** Check
+`ANTHROPIC_API_KEY` in `node-server/.env` — the form path works without it, so
+everything else will look fine.
 
 **Backend exits with `DATABASE_URL is not set`.** You skipped
 `cp .env.example .env`, or you're running from the repo root instead of
@@ -203,5 +206,6 @@ project-salamander/
 └── docs/
     ├── PRD.md            product spec
     ├── ARCHITECTURE.md   how it is built
-    └── DEPLOYMENT.md     as-built GCP runbook
+    ├── DEPLOYMENT.md     as-built GCP runbook
+    └── context/          per-module pointers to where the code lives
 ```

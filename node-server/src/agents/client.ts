@@ -6,10 +6,13 @@ export const client = new Anthropic();
 
 export const defaultModel = "claude-sonnet-5";
 
+export type Turn = { role: "user" | "assistant"; content: string };
+
 export async function interpretAs<T extends z.ZodType>(
   sentence: string,
   system: string,
   schema: T,
+  history: Turn[] = [],
   model: string = defaultModel
 ): Promise<z.infer<T> | null> {
   const response = await client.messages.parse({
@@ -23,7 +26,7 @@ export async function interpretAs<T extends z.ZodType>(
         schema: transformJSONSchema(z.toJSONSchema(schema, { reused: "inline" }))
       }
     },
-    messages: [{ role: "user", content: sentence }]
+    messages: [...history, { role: "user", content: sentence }]
   });
 
   const block = response.content.find(b => b.type === "text");

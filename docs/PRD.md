@@ -427,8 +427,6 @@ There are four operations — **add, read, update, delete** — and each is avai
 
 Ordinary and unsurprising. A form to add an item, the same form pre-filled to update one, and a delete control on each item. The category is chosen from a picker over the household's own categories rather than typed, so a form submission can never invent one. No interpretation happens anywhere in this path: what is submitted is what is stored.
 
-*The view, update and delete controls already exist in the interface; the natural-language path below is the new work.*
-
 #### 2.5.5 The natural-language path
 
 The user writes what they want in a normal sentence — *"Add 1984 to my books"* — and the system works out what to do with it. The sequence:
@@ -436,8 +434,9 @@ The user writes what they want in a normal sentence — *"Add 1984 to my books"*
 1. **The sentence goes to the server.** The client never contacts the LLM.
 2. **The server calls the model with three things:** the user's text as they wrote it, the shape of the JSON object the model must reply with, and the **metadata** it needs to resolve words onto records — the household's categories, and the items in view (§2.5.6).
 3. **The model replies** with either a structured object or a question (§2.5.7).
-4. **The server validates the object** against the same shape it gave the model, and commits it.
-5. **The committed change is pushed to open clients** and the interface updates without a reload (§2.5.10).
+4. **The server validates the object** against the same shape it gave the model, and resolves the items it names against the records the member can see.
+5. **What it understood is shown back to the user as a proposal**, one row per item the sentence named, and the change happens when the user accepts it (§2.5.8).
+6. **The committed change is pushed to open clients** and the interface updates without a reload (§2.5.10).
 
 **The server owns the exchange with the model, and that is not an implementation detail.** The metadata decides what the model is able to resolve, and the model's answer decides what is written. Both are bound to the household and the member on the server, from the session. A client able to supply its own metadata, or to post a structured object of its own, could read or write another household's inventory — so neither is ever taken from the request.
 
@@ -463,7 +462,7 @@ Some sentences do not resolve. The user writes *"Add 1984 to my library"*, and *
 
 **Ambiguity is asked about because a wrong guess is indistinguishable from a deliberate entry.** Quietly filing *1984* under the nearest-looking category, or creating **Library** because the word appeared, produces an inventory that does not match what the user believes they have — and nothing about the record afterwards reveals that it was a guess. One extra exchange is cheap; a quietly wrong record is not.
 
-**Nothing is written until the exchange resolves.** There is no partial record and no placeholder. A conversation the user abandons leaves the inventory exactly as it was.
+**Nothing is written while the exchange is still running.** There is no partial record and no placeholder. A conversation the user abandons leaves the inventory exactly as it was, and resolving it produces a proposal to accept rather than a change already made (§2.5.8).
 
 **Names are resolved, never invented.** The model may only map the user's words onto records it was given. If *1984* matches nothing the household tracks, that is a question or a plain "nothing tracked" — never a new item conjured to satisfy the sentence.
 
@@ -506,7 +505,17 @@ This is a decision about the **conversation**, not about the record: what a comm
 
 **Read is the one that does not write,** which makes it the safest of the four: it needs no confirmation and cannot be wrong in a way that persists. It also has to match loosely — someone asking about *1984* should find the item whether the household stored it as *1984* or *Nineteen Eighty-Four* — so it resolves against attributes as well as names, and says plainly that nothing matches rather than offering the nearest thing it found.
 
-**Update and delete both require certainty about which item is meant.** A sentence that resolves to more than one item is a question, not a choice the model makes on the user's behalf. Delete deserves particular care: a form delete is aimed at a specific row the user was looking at, whereas a sentence is aimed at a description, and the two are not equally precise. *TBD: whether a natural-language delete is confirmed before it happens.*
+**Update and delete both require certainty about which item is meant.** A sentence that resolves to more than one item is a question, not a choice the model makes on the user's behalf. Delete deserves particular care: a form delete is aimed at a specific row the user was looking at, whereas a sentence is aimed at a description, and the two are not equally precise.
+
+**Every write a sentence produces is confirmed before it happens.** A resolved sentence is shown back as a table of proposals — one row per item, with the values that would be stored — and nothing reaches the inventory until the user accepts that row. Add, update and delete are all confirmed the same way; read is not, because it writes nothing.
+
+**Confirmation is not a second interpretation, it is the parse made legible.** The row shows what the record *would be*, in the same fields the form uses, so the user checks a result rather than re-reading their own sentence. Accepting it writes exactly that; dismissing it writes nothing and costs one click.
+
+**Why it is not written immediately.** A sentence is aimed at a description, and the model resolving that description correctly is likely rather than certain. An add that guessed the wrong category and an update that moved the wrong item are both silent afterwards — the record looks deliberate, and nothing about it says it came from a misreading. The cheapest moment to catch that is before it is stored, while the user still has the sentence in mind.
+
+**Each proposal is accepted on its own.** A sentence naming three items produces three rows, and the user may take one and drop the others. This does not contradict the rule that a sentence which fails to *resolve* commits nothing: resolution is about whether the system understood, and is all-or-nothing; acceptance is about whether the user agrees, and is per row.
+
+**A proposal can be corrected instead of accepted.** Opening one loads its values into the form (§2.5.4), where the user fixes what was misread and saves from there — which is the same fallback the failed-interpretation path uses, reached earlier and with the work already half done.
 
 **One sentence may name several items** — *"low on eggs and milk, out of bread"* is one input and three changes. If any part of it does not resolve, the whole sentence goes into the clarification exchange rather than committing the parts that did: applying half a sentence leaves the user to work out which half landed, which is worse than being asked.
 

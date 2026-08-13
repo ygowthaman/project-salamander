@@ -4,6 +4,14 @@ import { User } from "../db/schema/auth.js";
 import * as categoriesRepo from "../db/repositories/categories.js";
 import * as itemsRepo from "../db/repositories/inventoryItems.js";
 import { db } from "../db/client.js";
+import {
+  endExchange,
+  isFinalTurn,
+  recordTurn,
+  resumeExchange,
+  turnLimit,
+  turnsTaken
+} from "./exchanges.js";
 
 export class InventoryError extends Error {
   constructor(
@@ -30,18 +38,29 @@ type ItemSelector = { q: string; category_id: string | null };
 
 export type Changes = { [K in keyof ProposedChanges]?: NonNullable<ProposedChanges[K]> };
 
-export type Unresolved =
+type Unresolved =
   | { reason: "no_match"; q: string }
   | { reason: "ambiguous"; q: string; items: ItemWithAuthor[] }
   | { reason: "no_changes"; q: string }
 
-export type Interpreted =
-  | { type: "question"; question: string }
+type Settled =
   | { type: "items"; items: ItemWithAuthor[]; total: number }
   | { type: "create_proposal"; items: ProposedItem[] }
   | { type: "update_proposal"; updates: { item: ItemWithAuthor; changes: Changes }[] }
   | { type: "delete_proposal"; items: ItemWithAuthor[] }
-  | { type: "unresolved"; failures: Unresolved[] }
+
+type Pending = { type: "pending"; question: string; candidates: ItemWithAuthor[] }
+
+export type Interpreted =
+  | Settled
+  | {
+      type: "question";
+      question: string;
+      candidates: ItemWithAuthor[];
+      exchangeId: string;
+      turnsRemaining: number;
+    }
+  | { type: "exhausted" }
 
 export type CategoryGroup = {
   category: { id: string; name: string };
@@ -145,18 +164,36 @@ function withoutUnchanged(changes: ProposedChanges): Changes {
   ) as Changes;
 }
 
-export async function interpretSentence(actor: User, text: string): Promise<Interpreted | null> {
-  const categories = await categoriesRepo.listCategories(db, actor.householdId);
-  const result = await interpretInventory(text, categories.map(c => ({ id: c.id, name: c.name })));
+function quoted(values: string[]): string {
+  return values.map((value) => `"${value}"`).join(", ");
+}
 
-  if (!result) return null;
+function unresolvedQuestion(failures: Unresolved[]): string {
+  const missing = failures.filter((f) => f.reason === "no_match").map((f) => f.q);
+  const crowded = failures.filter((f) => f.reason === "ambiguous").map((f) => f.q);
+  const vague = failures.filter((f) => f.reason === "no_changes").map((f) => f.q);
+  const sentences: string[] = [];
 
+  if (missing.length > 0) sentences.push(`Nothing in your inventory matches ${quoted(missing)}.`);
+  if (crowded.length > 0) sentences.push(`More than one item matches ${quoted(crowded)}.`);
+  if (vague.length > 0) sentences.push(`You did not say what to change about ${quoted(vague)}.`);
+  sentences.push("Nothing was saved — the whole sentence has to resolve.");
+
+  return sentences.join(" ");
+}
+
+function pendingFrom(failures: Unresolved[]): Pending {
+  return {
+    type: "pending",
+    question: unresolvedQuestion(failures),
+    candidates: failures.flatMap((failure) => (failure.reason === "ambiguous" ? failure.items : []))
+  };
+}
+
+async function settle(actor: User, result: Interpretation): Promise<Settled | Pending> {
   switch (result.type) {
     case "question":
-      return {
-        type: "question",
-        question: result.question
-      };
+      return { type: "pending", question: result.question, candidates: [] };
     case "create_item":
       return {
         type: "create_proposal",
@@ -173,7 +210,7 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
 
       const { resolved, failures } = await resolveEvery(actor, requested);
       if (failures.length + unchanged.length > 0) {
-        return { type: "unresolved", failures: [...failures, ...unchanged] };
+        return pendingFrom([...failures, ...unchanged]);
       }
 
       return {
@@ -183,7 +220,7 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
     }
     case "delete_item": {
       const { resolved, failures } = await resolveEvery(actor, result.targets);
-      if (failures.length > 0) return { type: "unresolved", failures };
+      if (failures.length > 0) return pendingFrom(failures);
 
       return { type: "delete_proposal", items: resolved.map(({ item }) => item) };
     }
@@ -201,4 +238,44 @@ export async function interpretSentence(actor: User, text: string): Promise<Inte
       throw new Error(`Unhandled interpretation: ${JSON.stringify(unhandled)}`);
     }
   }
+}
+
+export async function interpretSentence(
+  actor: User,
+  text: string,
+  exchangeId?: string
+): Promise<Interpreted | null> {
+  const exchange = resumeExchange(actor.id, exchangeId);
+  const categories = await categoriesRepo.listCategories(db, actor.householdId);
+  const result = await interpretInventory(
+    text,
+    categories.map(c => ({ id: c.id, name: c.name })),
+    exchange.turns
+  );
+
+  if (!result) {
+    endExchange(exchange);
+    return null;
+  }
+
+  const outcome = await settle(actor, result);
+  if (outcome.type !== "pending") {
+    endExchange(exchange);
+    return outcome;
+  }
+
+  if (isFinalTurn(exchange)) {
+    endExchange(exchange);
+    return { type: "exhausted" };
+  }
+
+  recordTurn(exchange, text, outcome.question);
+
+  return {
+    type: "question",
+    question: outcome.question,
+    candidates: outcome.candidates,
+    exchangeId: exchange.id,
+    turnsRemaining: turnLimit - turnsTaken(exchange)
+  };
 }

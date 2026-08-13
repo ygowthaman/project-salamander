@@ -110,7 +110,13 @@ export interface ProposedUpdate {
 }
 
 export type Interpretation =
-  | { type: "question"; question: string; items?: InventoryItem[] }
+  | {
+      type: "question";
+      question: string;
+      items: InventoryItem[];
+      exchange_id: string;
+      turns_remaining: number;
+    }
   | { type: "items"; items: InventoryItem[]; total: number }
   | { type: "create_proposal"; items: ProposedItem[] }
   | { type: "update_proposal"; updates: ProposedUpdate[] }

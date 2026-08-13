@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { inventoryItem } from "../domain/inventory.js";
-import { interpretAs } from "./client.js";
+import { interpretAs, Turn } from "./client.js";
 
 const proposedItem = inventoryItem.extend({
   unit: inventoryItem.shape.unit.nullable(),
@@ -69,6 +69,8 @@ function instructions(categories: Category[]) {
   Use find_items when it asks what the items are available.
   Use question when the sentence is ambiguous, or names nothing in the category list,
   or you are otherwise not able to resolve it to one of the other operations.
+  Earlier turns are questions you asked about one sentence and the answers to them:
+  read the whole exchange as that one sentence, not as several.
   category_id must be one of the ids in the categories list.
   For update_item and delete_item, q is the words the sentence used for the item.
   You do not know which items exist, so never invent one that was not named.
@@ -82,7 +84,8 @@ function instructions(categories: Category[]) {
 
 export async function interpretInventory(
   sentence: string,
-  categories: Category[]
+  categories: Category[],
+  history: Turn[] = []
 ): Promise<Interpretation | null> {
-  return interpretAs(sentence, instructions(categories), interpretation);
+  return interpretAs(sentence, instructions(categories), interpretation, history);
 }

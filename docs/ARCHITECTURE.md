@@ -8,18 +8,20 @@ them. [`PRD.md`](PRD.md) specifies *what* the product does and why.
 
 > ### ⚠️ Parts of this document are specification, not code
 >
-> The schema, authentication and households are built. The inventory service
-> layer, the LLM layer and the push channel are specified here and **not yet
-> written** — sections describing them are marked **(planned)**, and
+> The schema, authentication, households, categories, the inventory service layer
+> and the interpretation exchange are built. The push channel is specified here
+> and **not yet written** — sections describing it are marked **(planned)**, and
 > [Known gaps](#known-gaps) lists what is missing in detail.
 
 **What runs today:** authentication (email + password and Google OAuth, enforced
 on every route), households with their routes and settings UI, categories end to
 end — routes, service, repository and the Organize surface — `GET /health`, and
 the full domain schema — `households`, `users`, `categories`, `inventory_items`,
-`mandates`. The inventory routes exist with their validation
-and serialisation wired, but every handler returns 501: the service layer beneath
-them is deliberately unwritten, so the seam is marked rather than guessed at.
+`mandates`. Inventory runs end to end too: the grouped read, create, update and
+delete, the natural-language `POST /inventory/interpret` behind them, and the
+ten-turn clarification exchange that route opens. Two inventory handlers are
+still 501 — the flat `GET /inventory/items` and `POST /inventory/items/:id/stock`
+— and nothing is pushed anywhere, because the socket does not exist.
 
 Two things to understand before touching this codebase:
 
@@ -193,8 +195,8 @@ node-server/src/
 ├── server.ts              Bootstrap: migrations, listen, graceful shutdown
 ├── app.ts                 Composition root: builds the wired Fastify instance
 ├── agents/                LLM layer — interpretation functions, each owning
-│                          its prompt + output schema. The client and schemas
-│                          exist; the interpret functions are (planned)
+│                          its prompt + output schema, and the shared client
+│                          that carries an exchange's turns to the model
 ├── domain/                Field constraints shared by api/ and agents/, so a
 │                          rule about an item is written once. Imports zod and
 │                          nothing else
@@ -209,15 +211,16 @@ node-server/src/
 │   ├── auth.ts            /auth/* routes + zod schemas
 │   ├── health.ts          GET /health — unauthenticated, no database
 │   ├── households.ts      /households/* — create, members, roles, deletion
-│   ├── inventory.ts       /inventory/items/* — zod + serialisers wired;
-│   │                      every handler returns 501 pending the service layer
+│   ├── inventory.ts       /inventory/items/* and /inventory/interpret; the
+│   │                      flat list and the stock route still return 501
 │   ├── categories.ts      /categories/* — CRUD, plus search behind Organize
 │   └── websocket.ts       (planned) the push channel
 ├── services/             Policy layer: takes the session actor, owns `db`,
 │   │                      throws the error types api/ maps to status codes
 │   ├── households.ts      Membership, roles, provisioning, departure
 │   ├── categories.ts      Household-scoped CRUD; duplicate and in-use refusals
-│   └── inventory.ts       Interpretation: resolves the agent's selectors to rows
+│   ├── inventory.ts       Interpretation: resolves the agent's selectors to rows
+│   └── exchanges.ts       The open exchanges, their turns and the ten-turn cap
 └── db/
     ├── client.ts          pg.Pool + Drizzle instance; Db / DbExecutor types
     ├── schema/            Drizzle tables, one module per domain, barrelled
@@ -296,8 +299,6 @@ question — see [The interpretation exchange](#the-interpretation-exchange).
 
 ### `agents/` — the LLM layer
 
-**(planned.)**
-
 Intentionally isolated from routing and the database — its only job is to talk to
 Claude. It exposes one **interpretation function per target**, each owning:
 
@@ -314,11 +315,16 @@ as free prose. Structured outputs constrain decoding to that union; the same sch
 re-validates the response on arrival, because the API guarantees the shape but not
 the field constraints — string lengths and formats are checked client-side.
 
-Callers pass context (the household's categories, the items in the asking
-member's view) and get back parsed, schema-shaped data or a question. The agent
-layer performs no database access and no writes; it receives the context it needs
-as arguments. That is what keeps household scoping and privacy filtering concerns
-of the caller, which the model cannot influence.
+Callers pass context — today the household's categories, plus the turns of the
+exchange this sentence belongs to — and get back parsed, schema-shaped data or a
+question. The agent layer performs no database access and no writes; it receives
+the context it needs as arguments. That is what keeps household scoping and
+privacy filtering concerns of the caller, which the model cannot influence.
+
+**The model never sees the household's items.** It names what the sentence named,
+and `services/inventory.ts` resolves those words against the member's visible rows
+— so a selector that matches nothing, or matches several, is a database answer
+rather than a model claim.
 
 The Anthropic TS SDK is async and non-blocking by construction, so a single
 process serves concurrent interpretation calls without blocking the event loop.
@@ -464,7 +470,7 @@ keeping — the moment one does, the chain freezes and diffs get appended again.
 
 ## Runtime flows
 
-**Authentication is shipped; the interpretation and push flows are planned.**
+**Authentication and interpretation are shipped; the push flow is planned.**
 
 ### Authentication
 
@@ -506,40 +512,46 @@ from, always server-side.
 
 ### The interpretation exchange
 
-**(planned.)** This is the application's characteristic flow — every
-natural-language input in the product runs through it:
+This is the application's characteristic flow — every natural-language input in
+the product runs through it:
 
 ```
-1. Client POSTs free text:  { "text": "Add 1984 to my library" }
-2. Assemble metadata:       the HOUSEHOLD's categories, and the items in THIS
-                            MEMBER'S view (NOT is_private OR added_by = me) with
-                            names + attributes; per named item quantity + unit,
-                            plus par_level LEFT JOINed from mandates where it exists
-3. Interpret:               agent-layer call → one union: an object OR a question
-4a. A question →            return it, increment the turn counter, write nothing.
-                            The user answers; loop to step 3 with the exchange appended
-4b. An object →             validate with the SAME zod schema the route would
-                            accept directly. Invalid → treat as unresolved
-5. At turn 10, unresolved:  fail. A SERVER-WRITTEN message points the user at the
-                            form. Nothing is written
-6a. A query →               run it household-scoped and visibility-filtered, and
-                            respond with the rows. Nothing is written, nothing is
-                            pushed, and the rows never go back to the model
-6b. A write →               commit every item row the sentence named, in ONE
-                            transaction
-7. Push:                    the changed rows, to the members allowed to see them
-8. Respond:                 the applied old→new diff, so the UI clears the input
-                            and shows what it did
+1. Client POSTs free text:  { "text": "Add 1984 to my library",
+                              "exchange_id": "…" when answering a question }
+2. Resume or open:          the exchange named by exchange_id, if it belongs to
+                            this user; anything else opens a fresh one
+3. Assemble metadata:       the HOUSEHOLD's categories, plus the exchange's turns
+4. Interpret:               agent-layer call → one union: an object OR a question
+5a. A question →            record the turn, return it with the exchange id and
+                            the turns left. Nothing is written. The user answers;
+                            loop to step 4 with the exchange appended
+5b. An object →             resolve every selector it names against the member's
+                            visible rows. Any element unresolved → a SERVER-WRITTEN
+                            question, and the whole sentence re-enters the exchange
+6. At turn 10, unresolved:  fail with 422. A SERVER-WRITTEN message points the user
+                            at the form, and the exchange ends. Nothing is written
+7a. A query →               run it household-scoped and visibility-filtered, and
+                            respond with the rows. Nothing is written and the rows
+                            never go back to the model
+7b. A write →               respond with the resolved rows and the changes to make
+8. Either way:              the exchange ends — the sentence resolved
 ```
 
 Four properties of the loop are load-bearing:
 
-- **It is capped at ten and ephemeral.** In-memory only; a reload ends it. If you
-  reach for a table to hold it, you are building a chat app.
+- **It is capped at ten and ephemeral.** `services/exchanges.ts` holds a `Map` of
+  open exchanges — id, owner, turns, last use — and nothing else. If you reach for
+  a table to hold it, you are building a chat app.
 - **It lives in one instance's memory.** Every turn must reach the instance that
-  opened the exchange, and an abandoned one is reaped on a timer — a reload sends
-  no signal to end it. The turn counter is server-side for the same reason the
-  metadata is: a client-supplied budget is not a budget.
+  opened the exchange, and an abandoned one is reaped after ten idle minutes — a
+  reload sends no signal to end it. The turn counter is server-side for the same
+  reason the metadata is: a client-supplied budget is not a budget. An
+  `exchange_id` that is unknown, reaped, or owned by another user does not fail —
+  it opens a fresh exchange, so a stolen id buys its holder a blank conversation
+  rather than someone else's.
+- **The cap is one predicate.** `isFinalTurn` decides that the tenth reply would
+  be the last, and the tenth is spent failing rather than asking again — a
+  question nobody will get to answer is worth neither the call nor the wait.
 - **Nothing partial commits.** One sentence may name several items; if any part
   fails to resolve, the whole sentence re-enters the exchange rather than
   committing the parts that did.
@@ -547,11 +559,15 @@ Four properties of the loop are load-bearing:
   is the form — which is why the form path never touches the LLM, and why
   inventory stays fully usable when the model is unavailable.
 
-Once an object validates, it is written immediately: there is no draft and no
-approval gate. The clarification loop is the model working out intent, not a step
-where the user signs off on a parse. **Validation is not what varies** — a failed
-interpretation persists nothing, and the zod check is the only thing between a bad
-parse and the database.
+A resolved sentence commits nothing by itself (PRD §2.5.8). `/inventory/interpret` answers with
+the rows it resolved and the changes it would make, the UI shows them as a table of
+proposals, and the write happens when the user confirms one — through the same
+REST routes the form posts to. The interpretation path therefore has no write of
+its own: everything it produces has to survive the schemas that already guard
+`POST /inventory/item`, `PATCH` and `DELETE`.
+
+**Validation is not what varies** — a failed interpretation persists nothing, and
+the zod check is the only thing between a bad parse and the database.
 
 Two habits the design depends on: **never hold a transaction across a model call**
 (do the reads in one short transaction, call Claude with none open, persist in
@@ -687,30 +703,37 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 
 ## Known gaps
 
-- **The inventory service layer does not exist.** The `inventoryItems` repository
-  is written — household-scoped, visibility filtered, attribution joined — but
-  nothing calls it except `countItemsInCategory`: `api/inventory.ts` holds the
-  zod schemas, serialisers and route registrations, and **every handler still
-  returns 501**.
-- **The inventory repository has not run against Postgres.** `npm test` is
-  deliberately database-free, so the visibility filter, the `ON DELETE RESTRICT`
-  refusal and the attribution join are verified as types and compiled SQL, not as
-  behaviour. The categories repository has run — the Organize surface exercises
-  its reads and writes — but its case-insensitive unique index and its in-use
-  refusal are reached only through the UI, never by a test.
-- **The inventory UI renders against a mock.** `InventoryPage` and
-  `InventoryItemCard` read `api/mocks/inventory.groupedByCategory.json`, and the
-  natural-language box posts to a `/inventory/interpret` that has no server side.
-  Flipping `USE_MOCKS` in `frontend/src/api/inventory.ts` is the whole migration
-  once the routes are wired.
+- **Two inventory handlers still return 501** — the flat, paginated
+  `GET /inventory/items` and `POST /inventory/items/:id/stock`. The grouped read
+  covers the UI's needs today, and stock has no service function behind it, so a
+  sentence that adjusts a level resolves to an ordinary update instead.
+- **The interpretation metadata is categories only.** The model is given the
+  household's categories and the exchange's turns, not the member's items with
+  their attributes, quantities and par levels. It therefore cannot tell *"the 2%
+  one"* from *"the whole milk"* on its own — that disambiguation reaches the user
+  as a question after the selector fails to resolve, rather than being settled in
+  the first call.
+- **The category agent has no route.** `agents/category.ts` interprets sentences
+  about the taxonomy and `npm run check:interpret` exercises it, but nothing in
+  `api/` calls `interpretCategory`, and its prompt describes a `q` selector its
+  schema does not have — the schema selects on `name`.
+- **The inventory paths are exercised only through the UI.** The repository runs
+  against a development Postgres now that the routes are live, but the visibility
+  filter, the `ON DELETE RESTRICT` refusal and the attribution join are confirmed
+  by using the app, not by anything repeatable. The same is true of the categories
+  repository's case-insensitive unique index and its in-use refusal.
+- **An exchange does not survive a second server instance.** The `Map` is
+  per-process, so a follow-up turn routed elsewhere silently starts a new
+  exchange with a fresh count of ten. Nothing is lost — nothing was written — but
+  the deployment has to keep a user on one instance for a clarification to hold.
 - **The migration has been applied to a development Postgres only.** The schema
   and the categories path run there; nothing has verified the migration against
   the deployed database.
-- **Database behaviour has no test lane.** `npm test` covers the guard layer
-  (tokens, PKCE, CSRF, Origin, auth gating) and is deliberately database-free, so
-  household scoping, the case-insensitive unique index, `ON DELETE RESTRICT` and
-  the attribution path have nowhere to be tested. Signup, login, the
-  OAuth callback and refresh rotation are likewise uncovered.
+- **There is no test lane.** `node-server/test/` holds two scripts that call the
+  model — `check:agent` and `check:interpret` — and nothing else; `npm test`
+  names a guard-layer suite that is not in the tree. Household scoping, the
+  case-insensitive unique index, `ON DELETE RESTRICT`, the attribution path,
+  signup, login, the OAuth callback and refresh rotation are all uncovered.
 - **No email transport.** `users.email_verified` is set by Google, but a password
   account can never verify, a forgotten password cannot be reset, and household
   invitations to addresses without an account cannot be sent.
@@ -795,16 +818,14 @@ Chrome's deprecation path. See `DEPLOYMENT.md` §8 for the domain mapping steps.
 
 ## What's next
 
-Specified in [`PRD.md`](PRD.md) and sequenced in [`ROADMAP.md`](ROADMAP.md); the
-places the inventory code still contradicts the PRD are listed in
-[`docs/context/INVENTORY_CONFLICTS.md`](context/INVENTORY_CONFLICTS.md). In brief:
+Specified in [`PRD.md`](PRD.md). In brief:
 
-1. **The inventory service layer** — behind the routes that already exist, with
-   the visibility filter expressed once in the repository layer.
-2. **The push channel** — per-user socket, per-household fan-out, and a frontend
+1. **The push channel** — per-user socket, per-household fan-out, and a frontend
    client that reconnects.
-3. **The interpretation exchange** — the natural-language path for add, read,
-   update, delete and stock, with the ten-turn clarification loop.
+2. **Stock** — `POST /inventory/items/:id/stock` and the sentences that move a
+   level rather than replacing it.
+3. **Item metadata in the prompt** — the member's visible rows, so the model
+   resolves *"the 2% one"* in its first reply instead of asking.
 4. **Bill capture, budgeting and statistics** — the remaining product
    capabilities.
 5. **Reorder** — mandates beyond their levels, plus the constraint and scheduling

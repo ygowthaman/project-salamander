@@ -26,6 +26,12 @@ export async function deleteInventoryItem(id: string): Promise<void> {
   await apiFetch<void>(`/inventory/items/${id}`, { method: "DELETE" });
 }
 
-export async function interpretInventoryText(text: string): Promise<Interpretation> {
-  return apiFetch<Interpretation>("/inventory/interpret", { method: "POST", body: { text } });
+export async function interpretInventoryText(
+  text: string,
+  exchangeId: string | null,
+): Promise<Interpretation> {
+  return apiFetch<Interpretation>("/inventory/interpret", {
+    method: "POST",
+    body: exchangeId ? { text, exchange_id: exchangeId } : { text },
+  });
 }

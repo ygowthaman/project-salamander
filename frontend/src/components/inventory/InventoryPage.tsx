@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Container,
+  Divider,
   Group,
   Modal,
   Paper,
@@ -10,27 +11,38 @@ import {
   Skeleton,
   Stack,
   Text,
-  Textarea,
+  Textarea
 } from "@mantine/core";
 import { IconAlertTriangle, IconSparkles } from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   deleteInventoryItem,
   getInventoryGroupedByCategory,
-  interpretInventoryText,
+  interpretInventoryText
 } from "../../api/inventory";
 import {
   Interpretation,
   InventoryCategoryGroup,
   InventoryItem,
-  NewInventoryItem,
+  NewInventoryItem
 } from "../../types";
 import { InventoryItemCard } from "./InventoryItemCard";
 import { InventoryItemForm, ItemFormMode } from "./InventoryItemForm";
-import { InventoryProposalsTable, Proposal } from "./InventoryProposalsTable";
+import { CommittableProposal, InventoryProposalsTable, Proposal } from "./InventoryProposalsTable";
 import classes from "./InventoryPage.module.css";
 
 const COLUMNS = { base: 1, sm: 2, lg: 3 };
+
+interface ExchangeTurn {
+  key: string;
+  from: "you" | "salamander";
+  text: string;
+}
+
+interface OpenExchange {
+  id: string;
+  turnsRemaining: number;
+}
 
 let proposalCount = 0;
 
@@ -39,11 +51,29 @@ function nextProposalKey(): string {
   return `proposal-${proposalCount}`;
 }
 
+let turnCount = 0;
+
+function nextTurnKey(): string {
+  turnCount += 1;
+  return `turn-${turnCount}`;
+}
+
+function fieldsOf(item: InventoryItem): NewInventoryItem {
+  return {
+    name: item.name,
+    category_id: item.category_id,
+    quantity: item.quantity ?? 0,
+    unit: item.unit,
+    attributes: item.attributes,
+    is_private: item.is_private
+  };
+}
+
 function proposalsFrom(result: Interpretation): Proposal[] {
   switch (result.type) {
     case "create_proposal":
       return result.items.map(
-        (fields): Proposal => ({ key: nextProposalKey(), op: "create", fields }),
+        (fields): Proposal => ({ key: nextProposalKey(), op: "create", fields })
       );
     case "update_proposal":
       return result.updates.map(
@@ -57,9 +87,9 @@ function proposalsFrom(result: Interpretation): Proposal[] {
             quantity: changes.quantity ?? item.quantity ?? 1,
             unit: changes.unit ?? item.unit,
             attributes: changes.attributes ?? item.attributes,
-            is_private: changes.is_private ?? item.is_private,
-          },
-        }),
+            is_private: changes.is_private ?? item.is_private
+          }
+        })
       );
     case "delete_proposal":
       return result.items.map(
@@ -67,18 +97,19 @@ function proposalsFrom(result: Interpretation): Proposal[] {
           key: nextProposalKey(),
           op: "delete",
           item,
-          fields: {
-            name: item.name,
-            category_id: item.category_id,
-            quantity: item.quantity ?? 0,
-            unit: item.unit,
-            attributes: item.attributes,
-            is_private: item.is_private,
-          },
-        }),
+          fields: fieldsOf(item)
+        })
       );
-    default:
-      return [];
+    case "items":
+    case "question":
+      return result.items.map(
+        (item): Proposal => ({
+          key: nextProposalKey(),
+          op: "match",
+          item,
+          fields: fieldsOf(item)
+        })
+      );
   }
 }
 
@@ -109,7 +140,8 @@ export function InventoryPage() {
 
   const [text, setText] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [receipt, setReceipt] = useState<string | null>(null);
+  const [turns, setTurns] = useState<ExchangeTurn[]>([]);
+  const [exchange, setExchange] = useState<OpenExchange | null>(null);
 
   const [formMode, setFormMode] = useState<ItemFormMode>("create");
   const [selected, setSelected] = useState<InventoryItem | null>(null);
@@ -129,7 +161,7 @@ export function InventoryPage() {
     setOpenedProposalKey(null);
   }
 
-  function openProposal(proposal: Proposal) {
+  function openProposal(proposal: CommittableProposal) {
     setOpenedProposalKey(proposal.key);
 
     switch (proposal.op) {
@@ -169,20 +201,31 @@ export function InventoryPage() {
     void load();
   }, [load]);
 
+  function reply(said: string) {
+    setTurns((spoken) => [...spoken, { key: nextTurnKey(), from: "salamander", text: said }]);
+  }
+
   async function submit() {
     const sentence = text.trim();
     if (!sentence || submitting) return;
 
+    const opening: ExchangeTurn = { key: nextTurnKey(), from: "you", text: sentence };
     setSubmitting(true);
-    setReceipt(null);
+    setText("");
+    setTurns((spoken) => (exchange ? [...spoken, opening] : [opening]));
     try {
-      const result = await interpretInventoryText(sentence);
-      setText("");
-      setReceipt(receiptFor(result));
+      const result = await interpretInventoryText(sentence, exchange?.id ?? null);
+      setExchange(
+        result.type === "question"
+          ? { id: result.exchange_id, turnsRemaining: result.turns_remaining }
+          : null
+      );
+      reply(receiptFor(result));
       setProposals(proposalsFrom(result));
       await load();
     } catch (error) {
-      setReceipt(error instanceof Error ? error.message : "That could not be applied.");
+      setExchange(null);
+      reply(error instanceof Error ? error.message : "That could not be applied.");
     } finally {
       setSubmitting(false);
     }
@@ -213,7 +256,7 @@ export function InventoryPage() {
 
       <div className={classes.panes}>
         <section className={classes.exchange}>
-          <Paper withBorder radius="md" p="md">
+          <Paper withBorder radius="md" p="md" className={classes.composer}>
             <Textarea
               value={text}
               onChange={(event) => setText(event.currentTarget.value)}
@@ -223,7 +266,11 @@ export function InventoryPage() {
                   void submit();
                 }
               }}
-              placeholder={'Try "Add 1984 to my Books" or "low on eggs and milk, out of bread"'}
+              placeholder={
+                exchange
+                  ? "Answer the question on the left"
+                  : 'Try "Add 1984 to my Books" or "low on eggs and milk, out of bread"'
+              }
               aria-label="Describe an inventory change"
               autosize
               minRows={2}
@@ -231,9 +278,11 @@ export function InventoryPage() {
               disabled={submitting}
             />
 
-            <Group justify="space-between" mt="sm" wrap="nowrap">
+            <Group justify="space-between" wrap="nowrap">
               <Text size="xs" c="dimmed">
-                Plain English. Press ⌘/Ctrl + Enter to send.
+                {exchange
+                  ? `Still working this out — ${exchange.turnsRemaining} ${exchange.turnsRemaining === 1 ? "turn" : "turns"} left.`
+                  : "Plain English. Press ⌘/Ctrl + Enter to send."}
               </Text>
               <Button
                 className={classes.sendButton}
@@ -245,21 +294,36 @@ export function InventoryPage() {
                 Send
               </Button>
             </Group>
-          </Paper>
 
-          <ScrollArea
-            className={classes.scroll}
-            classNames={{ content: classes.scrollContent }}
-            type="auto"
-            scrollbars="y"
-            offsetScrollbars="y"
-          >
-            {receipt && (
-              <Paper withBorder radius="md" p="sm">
-                <Text size="sm">{receipt}</Text>
-              </Paper>
-            )}
-          </ScrollArea>
+            {turns.length > 0 && <Divider />}
+
+            <ScrollArea
+              className={classes.transcript}
+              classNames={{ content: classes.scrollContent }}
+              type="auto"
+              scrollbars="y"
+              offsetScrollbars="y"
+            >
+              <Stack gap="xs">
+                {[...turns].reverse().map((turn) => (
+                  <Paper
+                    key={turn.key}
+                    withBorder
+                    radius="md"
+                    p="sm"
+                    ml={turn.from === "you" ? "md" : undefined}
+                    mr={turn.from === "you" ? undefined : "md"}
+                    bg={turn.from === "you" ? "var(--mantine-color-default-hover)" : undefined}
+                  >
+                    <Text size="xs" c="dimmed">
+                      {turn.from === "you" ? "You" : "Salamander"}
+                    </Text>
+                    <Text size="sm">{turn.text}</Text>
+                  </Paper>
+                ))}
+              </Stack>
+            </ScrollArea>
+          </Paper>
         </section>
 
         <section className={classes.workspace}>
