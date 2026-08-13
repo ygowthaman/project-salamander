@@ -47,7 +47,7 @@ A **user** is one person with an account. The user record holds identity and pro
 
 - **Display name** — optional. Shown wherever a person needs naming in the UI. Populated automatically from Google when the account is created that way.
 - **Avatar image** — optional, likewise populated from Google when available.
-- **Email verified** — whether the address has been proven to belong to the user. Today this is only ever set by Google asserting it; there is no verification email of our own. *TBD: whether Salamander needs its own verification flow, and what — if anything — is gated on an unverified address.*
+- **Email verified** — whether the address has been proven to belong to the user. Today this is only ever set by Google asserting it; Salamander's own verification email is a later step and nothing is gated on an unverified address until it exists (§2.6.3).
 - **Created date.**
 
 **Credentials are optional, and there may be more than one.** A user can have a password, a linked Google account, or both:
@@ -154,7 +154,7 @@ Two things follow from the fact that they already have a household (§2.2.2 — 
 
 Notifications are their own module and are not yet written; this flow depends on it.
 
-*TBD: email delivery is not built.* The invitation flow for new users assumes Salamander can send email; the SMTP setup that makes that possible is deferred and will be specified separately. The existing-account flow does not need it.
+The invitation flow for new users depends on Salamander being able to send email, which is specified in §2.6 — including what happens where a deployment has no mail server configured. The existing-account flow does not need it.
 
 *TBD: how an in-app invitation ages.* The 24-hour expiry above is stated for the emailed link. Whether a notification-borne invitation also expires — and whether a person who has not signed in for a week still finds it waiting — is unspecified.
 
@@ -369,7 +369,7 @@ Two rules carry over from elsewhere in this section and are not optional:
 
 Emailed links in Salamander therefore behave uniformly: **24 hours, one use, then an expiry message.** A user who requests a reset twice should expect the first link to be worthless, and nothing in the product should mint an emailed credential that outlives either bound.
 
-**This flow depends on email delivery, which is not built** — the same SMTP gap that blocks household invitations (§2.2.6). Both are waiting on it.
+**This flow depends on email delivery** (§2.6), as household invitations do (§2.2.6). It is the reason a deployment without a mail server is misconfigured rather than merely reduced: this is the only recovery path a password-only account has.
 
 *TBD: resetting a password on an account that has none.* A Google-only account has no password to forget. Whether "forgot password" on such an address does nothing, or doubles as a way to set a first password by email, is unspecified — and the second reading would make email possession sufficient to gain a password credential on a Google-only account, which interacts with §2.4.2.
 
@@ -540,3 +540,84 @@ A committed change is pushed to open clients so the interface reflects it withou
 #### 2.5.11 What writes to inventory from elsewhere
 
 Bill capture (§1.1) records a purchase and updates the inventory as part of doing so, which makes it a second writer into this module. It is not specified yet. When it is, it is bound by everything above: the same item record, the same attribution to the member who uploaded the bill, and the same rule that nothing is written from an interpretation that did not fully resolve.
+
+### 2.6 Email
+
+Salamander sends email, and it does so for two unrelated reasons that share nothing but the transport.
+
+- **Account email** carries credentials and account state: a password reset link, a household invitation, and later an address verification. The user did not ask for it in the moment; something they did produced it, and it is part of how the account works.
+- **Requested email** carries the household's own data to the member who asked for it: *"email me my grocery list"*, or a monthly summary of what was spent. Nothing about the account changes; a copy of what the member can already see is put in their inbox.
+
+The distinction runs through the whole section. Account email cannot be turned off, because a password reset the user has opted out of is a lockout. Requested email is entirely the member's to switch on and off, because it exists only to be convenient.
+
+#### 2.6.1 Email is infrastructure, and it is optional in the same way Google is
+
+A deployment configures an SMTP server. If it has not, the product still runs and only what needs email is unavailable — the same arrangement as Google sign-in (§2.4.1), so local development and automated tests need no mail server.
+
+**The consequence is not the same, though, and it must not be understated.** An unconfigured Google client costs a convenience: those users sign in with a password instead. An unconfigured SMTP server costs a *recovery path* — a user with a password, no memory of it and no linked Google account cannot get back in (§2.4.6), and an admin cannot invite anyone who does not already have an account (§2.2.6). A production deployment without SMTP is misconfigured, not minimal.
+
+**Where a feature needs email and there is none, it is refused plainly and up front.** The form is not offered, or it says that email is unavailable. Nothing accepts a request, reports success, and silently sends nothing — a reset the user believes is on its way is worse than one they were told they cannot have.
+
+#### 2.6.2 Salamander only ever emails you
+
+**Every email goes to the address on the recipient's own account.** The recipient is never taken from the request. A member cannot email their grocery list to a housemate, to an address they type in, or to anyone at all except themselves.
+
+This is a hard boundary and the reason for it is not privacy alone. A product that sends attacker-composed content to an attacker-chosen address is a spam relay wearing someone else's domain, and it will be used as one. Fixing the recipient to the session's account means the worst available abuse is mailing yourself.
+
+**The single exception is the invitation to someone with no account** (§2.2.6), which by definition goes to an address that is not the sender's. That is why inviting is an `admin` action (§2.3.1) and why the invitation is rate limited like the sign-in surfaces are (§2.4.4): it is the one path by which one person causes mail to reach another, and it is kept narrow deliberately.
+
+**Changing the email address on an account redirects everything.** Mail follows the current address and is never sent to a previous one.
+
+#### 2.6.3 Account email
+
+**Password reset is the one that is needed now** (§2.4.6). Everything that flow requires is specified there — the request that reveals nothing, the link, the sessions ended on completion — and this section supplies only what the link travels on.
+
+**Household invitations** to an address with no account (§2.2.6) are the second, and they are already specified in the same terms.
+
+**Address verification is a later step, not a missing one.** §2.1 carries an `emailVerified` flag that today only Google ever sets. Salamander will eventually send its own verification mail and set it for password accounts too. It is deliberately not being built alongside reset, because reset is the flow whose absence locks people out and verification is the flow that makes an existing capability stricter.
+
+**Nothing is gated on verification until that flow exists.** An unverified address is a normal address, and no feature may start requiring verification before there is a way for a user to obtain it. The one place the flag already carries weight — auto-linking a Google sign-in to a password account (§2.4.2) — reads Google's assertion, not ours, and is unaffected.
+
+**Every emailed link is 24 hours and one use** (§2.4.6). A verification link, when it exists, is bound by the same rule; nothing in the product mints an emailed credential that outlives either bound.
+
+**A failed send never changes what the requester is told.** Asking for a reset returns the same response whether the address has an account, has no account, or has one whose mail bounced (§2.4.4, §2.4.6). Delivery problems are an operator's concern, visible in logs and metrics, and reporting them to the requester would rebuild the account-enumeration oracle those rules exist to prevent. Requested email (§2.6.4) is the opposite case and says so.
+
+#### 2.6.4 Emailing yourself the household's data
+
+A member can ask for what they are looking at to be sent to them. The first of these is the grocery list.
+
+**"Email me my grocery list" is a read with a destination, not a fifth operation.** It resolves through the natural-language path exactly as any other sentence does (§2.5.5), and it is a **read** in the sense of §2.5.8: it writes nothing to the inventory, so nothing about the record can be wrong afterwards. The matching items are shown on screen the way any read renders them, and the same list is put in an email.
+
+**It is not confirmed before sending, because the destination is not the user's to choose.** §2.5.8 confirms writes and not reads, and this stays a read. Sending is irreversible in a way a read is not — but it is irreversible into the requester's own inbox (§2.6.2), which is the smallest consequence any irreversible action in the product has.
+
+**What goes in the list: the items in the named category that are low.** The category is resolved against the household's own categories exactly as anywhere else (§2.5.2) — *"grocery"* onto **Groceries**, and a word that matches nothing is a question rather than a guess (§2.5.7).
+
+**Low means a quantity of zero unless the sentence says otherwise.** *"Email me my grocery list"* is the things the household has run out of, which is the state §2.5.1 says the inventory most needs to show. A sentence that names a threshold — *"email me everything in groceries below 2"* — uses that instead. The threshold is read from the sentence and used once; it is **not stored on the item**, and §2.5.1's reason for keeping reorder levels off the item record stands unchanged. A per-item restock level is a real feature and it belongs to the shopping module when that is written, not to this one.
+
+**An empty list sends nothing.** If nothing is low, the member is told so on screen and no email is sent. They asked a question and got an answer; an email saying "nothing" is the kind of mail that teaches people to ignore mail from you.
+
+**The email is rendered by the server from the record, never composed by the model.** §2.5.7 confines the model's own words to clarification, and an email is the furthest thing in the product from a clarification — it leaves the system, it cannot be corrected afterwards, and it is read hours later with no context around it. The model decides which category and which threshold the sentence meant; the server decides what the message says.
+
+**Here a failed send is reported.** Unlike a reset (§2.6.3), the member is standing in front of the screen having just asked, so they are told the email did not go out. There is nothing to conceal — the request came from an authenticated session about their own household, so the response reveals nothing an attacker could not already see.
+
+#### 2.6.5 The monthly summary
+
+**Once a month, a member can have a summary of the previous month's spending emailed to them:** what was spent in total, and what was spent in each category (§2.5.2).
+
+**It is opt-in and off by default.** Each member chooses for themselves and can stop at any time; one member subscribing does not subscribe the household. Scheduled mail nobody asked for is the fastest way to be filed as spam by both the recipient and their provider.
+
+**Every scheduled email carries the way to stop it.** Account email (§2.6.3) does not and must not — there is no opting out of a password reset — and the difference between the two is exactly whether the recipient asked for it.
+
+**It covers the calendar month that has ended, and it is sent once for that month.** A run that fails or is missed is not silently replaced by a partial month later; a summary is either the month or it is not sent.
+
+**Its contents are computed over what that member can see**, in line with §2.5.9: a member's own private items count for them and for nobody else, so two members of one household can receive different totals for the same month. That is correct, and for the same reason there is no household-wide figure in the product — a shared total would announce that private items exist.
+
+**What the figures actually are is owed to the statistics module** (§1.1), which is not written. This section settles that the summary exists, who receives it, when, and on whose visibility it is computed. The arithmetic — what counts as spend, how a purchase is dated, how a bill split across categories is attributed — belongs there and is not decided here.
+
+#### 2.6.6 What an email may say
+
+An email is copy the product puts in front of a member, so every rule about what the interface may say applies to it unchanged. Two are worth stating because it is easy to forget that mail is part of the application.
+
+**An email never names the household to a member who skipped.** §2.2.3 makes this a rule about the whole application, not about screens, so a grocery list or a monthly summary sent to a member at `skipHousehold: true` says *Organize* or says nothing — it never mentions a household they do not know they have, and never names one they did not choose.
+
+**An email never contains another member's private items** (§2.2.9), including when the recipient is an `admin`. This follows from §2.6.5 and §2.6.4 computing their contents over what the recipient can see, which is the same rule that bounds the model's metadata (§2.5.6) and the live push (§2.5.10). A private item that was never selected cannot be mailed to the wrong person.
