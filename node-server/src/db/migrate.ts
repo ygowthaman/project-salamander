@@ -6,6 +6,7 @@ import path from "node:path";
 import { sql } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, pool } from "./client.js";
+import { readSeedUserCredentials, seedUser } from "./seed.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsFolder = path.resolve(here, "../../drizzle");
@@ -46,14 +47,23 @@ function targetLabel(): string {
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
   const reset = process.argv.includes("--reset");
   if (reset) {
-    if (process.env.NODE_ENV === "production") {
-      console.error("refusing to --reset with NODE_ENV=production");
+    if (process.env.NODE_ENV === "production" && process.env.ALLOW_DESTRUCTIVE_RESET !== "1") {
+      console.error(
+        "refusing to --reset with NODE_ENV=production without ALLOW_DESTRUCTIVE_RESET=1",
+      );
       process.exit(1);
     }
+    // Must run before the drop: a missing variable found after it leaves a schema nobody can sign into.
+    readSeedUserCredentials();
     console.log(`dropping all tables in ${targetLabel()}`);
     await resetSchema();
   }
   await runMigrations();
+  const seededEmail = reset ? await seedUser(db) : null;
   await pool.end();
-  console.log(reset ? "database reset, migrations applied" : "migrations applied");
+  console.log(
+    seededEmail
+      ? `database reset, migrations applied, seeded ${seededEmail}`
+      : "migrations applied",
+  );
 }

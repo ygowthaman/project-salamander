@@ -657,15 +657,35 @@ Hosting.
 
 | Service | Purpose |
 |---|---|
-| Cloud Run | Backend (Node/Fastify) |
+| Cloud Run (service) | Backend (Node/Fastify) |
+| Cloud Run (job) | `salamander-db-reset` — wipes, replays and reseeds the database, once per deploy |
 | Firebase Hosting | Frontend (static React build) |
 | Compute Engine VM | PostgreSQL (self-managed; Cloud SQL is the growth path) |
-| Secret Manager | `ANTHROPIC_API_KEY`, `DATABASE_URL`, `JWT_SECRET` |
+| Secret Manager | `ANTHROPIC_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_SECRET`, and the seed account's `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME` |
 
 **No Docker.** Deploys build straight from the source tree with Cloud Buildpacks —
 there is no Dockerfile to maintain and no local Docker or Compose to install.
 Cloud Run detects the Node app, builds it, and runs the container it produces,
 which listens on the `$PORT` it injects.
+
+**Every deploy rebuilds the production database from empty** and reseeds a single
+account. The schema is still being drafted, so it is republished rather than
+versioned — `db:generate` throws the migration chain away and re-derives one
+baseline from `schema/`, and a regenerated baseline cannot be applied to a
+populated database. Production is a test environment holding nothing worth
+keeping, and this is what lets a schema change ship without a hand-written
+catch-up migration.
+
+The wipe runs as a **Cloud Run job** executed once per deploy, rather than on the
+server's boot path: instances also start on autoscale events and health-check
+restarts, so a reset in `server.ts` would eventually drop the database under an
+instance already serving traffic. The seed credentials come from Secret Manager
+and have no defaults, and the job validates them before dropping anything.
+
+This ends when the first database holds data worth keeping. The switch is one
+change with three parts: freeze the current `drizzle/` as a baseline, drop
+`reset-migrations.ts` from `db:generate` so it appends diffs again, and retire
+the reset job in favour of `db:migrate:preserve`.
 
 **The push channel needs non-default Cloud Run flags**, or long-lived sockets
 drop:

@@ -74,13 +74,20 @@ password `postgres`, database `salaman_db` — matching the `DATABASE_URL` in
 
 ```bash
 cd node-server
-cp .env.example .env      # defaults work locally; add ANTHROPIC_API_KEY for the sentence box
+cp .env.example .env      # add ANTHROPIC_API_KEY, and the three SEED_USER_* values
 npm install
+npm run db:reset          # build the schema, and the account you sign in as
 npm run dev
 ```
 
 Serves on **http://localhost:8000** with hot reload (`tsx watch`). On boot it
-applies any pending migrations from `drizzle/`.
+applies any pending migrations from `drizzle/` — a no-op directly after
+`db:reset`.
+
+> **`db:reset` drops every table**, replays the baseline, and creates one account
+> from `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME`. Those have no
+> defaults, so it stops *before* touching the database until you set them — and
+> that account is the only way in, since a rebuilt database has no other users.
 
 **Google sign-in is optional locally.** Leave `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` blank and the server still runs with email + password;
@@ -131,8 +138,12 @@ inventory, categories and household settings.
 | `FRONTEND_URL` | `http://localhost:5173` | Where the browser lands after an OAuth round-trip |
 | `COOKIE_DOMAIN` | *(empty)* | Leave empty locally. In production, the shared registrable domain so one cookie covers the app and API hosts |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(empty)* | Optional — blank means email + password only, with `/auth/google` returning 503 |
+| `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME` | — | The one account a `db:reset` rebuild creates. **No defaults, all three required on that path** — the reset refuses before dropping anything if one is missing. Never read by the running server |
 
 `DATABASE_URL` takes a plain `postgresql://` scheme, with no dialect suffix.
+
+The seed credentials are secrets like any other — `.env` locally, Secret Manager
+in production, nothing about them committed.
 
 ### `frontend/.env`
 
@@ -156,8 +167,8 @@ npm run build        # compile to dist/
 npm start            # run the compiled build
 npm run db:reset     # DEV: rebuild drizzle/ from schema/, then rebuild the database
 npm run db:generate  # wipe drizzle/ and regenerate one baseline from src/db/schema/
-npm run db:migrate   # DEV: drop every table, then replay that baseline
-npm run db:migrate:preserve  # apply pending migrations without dropping anything
+npm run db:migrate   # DEV: drop every table, replay that baseline, seed the account
+npm run db:migrate:preserve  # apply pending migrations; drop nothing, seed nothing
 
 # Frontend
 cd frontend

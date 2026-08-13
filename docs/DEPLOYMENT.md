@@ -141,10 +141,18 @@ openssl rand -base64 32 | tr -d '\n' | \
 printf '%s' "GOCSPX-REPLACE_ME" | \
   gcloud secrets create google-client-secret --data-file=-
 
+# The seed account the reset job creates (§5a). All three are secrets rather
+# than plain env vars so none of them — the password least of all — is readable
+# from the repository or from a deploy command in it.
+printf '%s' "REPLACE_ME@example.com" | gcloud secrets create seed-user-email --data-file=-
+printf '%s' "REPLACE_ME"             | gcloud secrets create seed-user-password --data-file=-
+printf '%s' "REPLACE ME"             | gcloud secrets create seed-user-name --data-file=-
+
 # Let Cloud Run's runtime service account read the secrets.
 export PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 export RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-for s in anthropic-api-key database-url jwt-secret google-client-secret; do
+for s in anthropic-api-key database-url jwt-secret google-client-secret \
+         seed-user-email seed-user-password seed-user-name; do
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:${RUNTIME_SA}" \
     --role=roles/secretmanager.secretAccessor
@@ -152,6 +160,58 @@ done
 ```
 
 ## 5. Deploy the backend (Cloud Run + Direct VPC egress)
+
+### 5a. The deploy-time reset job
+
+While the schema is still being drafted, **every deploy rebuilds the database
+from empty and reseeds one account** — the same republish cycle `npm run db:reset`
+runs locally. Production is a test environment and holds nothing worth keeping;
+this is what lets a schema change ship without a hand-written catch-up migration.
+
+It runs as a **Cloud Run job**, and deliberately not on the server's boot path.
+Cloud Run starts instances on autoscale events and health-check restarts, not
+only on deploys, so a reset in `server.ts` would eventually wipe the database out
+from under an instance already serving traffic. A job fires exactly once, when
+you run it.
+
+Create it once — same source tree as the service, different entrypoint:
+
+```bash
+gcloud run jobs deploy salamander-db-reset \
+  --source node-server \
+  --region="$REGION" \
+  --command=node \
+  --args=dist/db/migrate.js,--reset \
+  --network=salamander-vpc \
+  --subnet=salamander-subnet \
+  --vpc-egress=private-ranges-only \
+  --set-secrets=DATABASE_URL=database-url:latest,SEED_USER_EMAIL=seed-user-email:latest,SEED_USER_PASSWORD=seed-user-password:latest,SEED_USER_NAME=seed-user-name:latest \
+  --set-env-vars=ALLOW_DESTRUCTIVE_RESET=1 \
+  --max-retries=0
+```
+
+Then run it, before every service deploy:
+
+```bash
+gcloud run jobs execute salamander-db-reset --region="$REGION" --wait
+```
+
+> **`ALLOW_DESTRUCTIVE_RESET=1` is what makes the drop legal**, and it belongs on
+> the job and nowhere else. Cloud Buildpacks set `NODE_ENV=production` on the job
+> and the service alike, so `migrate.ts` cannot tell them apart from the
+> environment; this variable is the distinction. Without it a `--reset` in
+> production refuses and exits non-zero. **Never set it on the service.**
+
+> **`--max-retries=0`** — a failed reset must not be retried on its own. The retry
+> would drop a database the first attempt may already have rebuilt.
+
+The job carries only `DATABASE_URL` and the three seed secrets: the migrate
+entrypoint imports the database client and the seeder, not the app, so it needs
+neither the Anthropic key nor the JWT/OAuth config. The seed variables have no
+defaults and are **validated before anything is dropped**, so a missing one fails
+the job with the database still intact.
+
+### 5b. The service
 
 `--network`/`--subnet` turn on Direct VPC egress; `--vpc-egress=private-ranges-only`
 sends only RFC-1918 traffic (the VM) through the VPC, so Anthropic API calls
@@ -193,7 +253,8 @@ gcloud run deploy salamander-server \
 > can still strand an exchange: the user is told to start again and nothing is
 > written. Dropping the flag turns that from rare into routine.
 
-The container runs pending migrations on boot, so the **DB must be reachable
+The container still calls `runMigrations()` on boot — a no-op against the
+database 5a just rebuilt, but it means the **DB must be reachable
 before this deploy** — if it isn't, the container exits and the deploy fails its
 health check. Grab the URL:
 
@@ -405,17 +466,27 @@ deployment*, but that's intentionally not enabled.)
 Run these from **Cloud Shell** after cloning/pulling the latest code. The live
 service is in **us-west1**, project **`project-salamander-503418`**.
 
-**Backend code change** — from the repo root:
+**Backend code change** — from the repo root. Three commands, in this order: the
+job is rebuilt from the new source (it replays the `drizzle/` baseline out of its
+own image, so a stale job would replay the old schema), then run, then the
+service.
 
 ```bash
 cd ~/project-salamander && git pull
+
+gcloud run jobs deploy salamander-db-reset --source node-server --region=us-west1
+gcloud run jobs execute salamander-db-reset --region=us-west1 --wait
 gcloud run deploy salamander-server --source node-server --region=us-west1
 ```
 
-The VPC, secrets, and WebSocket flags persist across deploys, so you don't re-pass
-them unless you're changing one. Migrations under `node-server/drizzle/` are
-applied automatically on the new revision's first boot — so a **new DB migration**
-needs no separate step, just commit the generated SQL and redeploy the backend.
+The VPC, secrets, and flags persist across deploys on both the job and the
+service, so you don't re-pass them unless you're changing one.
+
+> **Every deploy destroys the production database**, including whatever you were
+> testing with — you come back up with the seed account and nothing else. That is
+> the deliberate arrangement while the schema is in flux (§5a), and it is why a
+> schema change needs no catch-up migration: run `npm run db:reset` locally,
+> commit the regenerated `drizzle/0000_init.sql`, and redeploy.
 
 **Frontend change** — the backend URL is baked in at build time, so `.env.production`
 must already exist (it does from the first deploy):
