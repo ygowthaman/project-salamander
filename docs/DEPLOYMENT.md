@@ -180,8 +180,8 @@ Create it once — same source tree as the service, different entrypoint:
 gcloud run jobs deploy salamander-db-reset \
   --source node-server \
   --region="$REGION" \
-  --command=node \
-  --args=dist/db/migrate.js,--reset \
+  --command=/cnb/lifecycle/launcher \
+  --args="node dist/db/migrate.js --reset" \
   --network=salamander-vpc \
   --subnet=salamander-subnet \
   --vpc-egress=private-ranges-only \
@@ -195,6 +195,14 @@ Then run it, before every service deploy:
 ```bash
 gcloud run jobs execute salamander-db-reset --region="$REGION" --wait
 ```
+
+> **The entrypoint must go through `/cnb/lifecycle/launcher`.** Buildpacks put
+> `node` on `PATH` from inside that launcher, so a bare `--command=node` exits
+> with `Application exec likely failed` before any of your code runs. Clearing
+> the command instead is no better: the launcher then starts the default `web`
+> process and appends the arguments to it, booting `npm start` — the *server* —
+> against the reset job's environment. Passing the whole command as a single
+> `--args` string is what actually reaches `migrate.js`.
 
 > **`ALLOW_DESTRUCTIVE_RESET=1` is what makes the drop legal**, and it belongs on
 > the job and nowhere else. Cloud Buildpacks set `NODE_ENV=production` on the job
@@ -396,6 +404,13 @@ Public Suffix List, so `salamander-server-….run.app` and `salamander.axoliz.ai
 are *different sites*: the browser refuses to attach the cookie to any
 cross-site fetch. Everything works on localhost (same site) and then 401s in
 production. Putting the API on `api.axoliz.ai` puts both under `axoliz.ai`.
+
+The domain must be **verified for the signed-in account first**, or the mapping
+is refused with `The provided domain does not appear to be verified`. Firebase
+Hosting's own verification of `salamander.axoliz.ai` does not carry over. Add
+`axoliz.ai` as a **Domain property** in
+[Search Console](https://search.google.com/search-console) and create the `TXT`
+record it asks for in Cloudflare — verifying the apex covers `api.axoliz.ai`.
 
 ```bash
 gcloud beta run domain-mappings create \
