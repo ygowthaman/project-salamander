@@ -25,11 +25,14 @@ const publicApiUrl = (process.env.PUBLIC_API_URL ?? "http://localhost:8000").rep
 const googleClientId = process.env.GOOGLE_CLIENT_ID;
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
+const signupEnabled = process.env.SIGNUP_ENABLED !== "false";
+
 export const authConfig = {
   jwtSecret: resolveJwtSecret(),
   isProduction,
   frontendUrl,
   publicApiUrl,
+  signupEnabled,
 
   accessTokenTtl: "15m",
   refreshTokenTtlDays: 30,

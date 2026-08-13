@@ -312,6 +312,10 @@ Authentication covers proving who a user is and keeping them signed in. Two ways
 
 Google sign-in is **optional infrastructure**: if the deployment has no Google credentials configured, the rest of the product still works and only Google sign-in is unavailable. Local development and automated tests do not need an OAuth client.
 
+**A deployment can refuse new accounts.** Sign-up is a capability the operator switches off, not a permanent property of the product: with it closed, the deployed instance admits only accounts that already exist, and the only way to make one is operator-side (the seeded account of §7). The login screen offers no route to create an account, and the sign-up endpoint refuses even when called directly — hiding the affordance without closing the endpoint is not closing anything.
+
+**Closing sign-up closes Google sign-in with it.** Google is itself an account-creation route (§2.4.2): an unrecognised Google identity becomes a new account. Rather than leave a button that silently works for people who already have an account and fails for everyone else, the whole method is withdrawn while sign-up is closed, and existing users sign in with email and password. This is the reason a deployment with perfectly good Google credentials may still show no Google button.
+
 **These are the only two ways in.** There are no other identity providers, and none are planned. The account-linking model in §2.4.2 is written generically — a link records *which provider* and *which account at that provider*, rather than assuming Google — so adding one later would be an addition rather than a redesign. That is a property of the design, not an intention.
 
 #### 2.4.2 Matching a Google sign-in to an account

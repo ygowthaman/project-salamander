@@ -485,6 +485,21 @@ Two ways in, one session model.
   `state`, exchanges the code, and validates the ID token against Google's JWKS
   (checking **issuer and audience**).
 
+`SIGNUP_ENABLED=false` closes both of those doors. `POST /auth/signup` answers
+`403`, and because an unrecognised Google identity is created as a new account
+(PRD §2.4.1), the Google routes close with it — `GET /auth/google` answers `503`
+and the callback redirects to the login page with `error=google_unavailable`, so
+a round-trip already in flight when the flag was set cannot land as a new
+account. Nothing is gated in the frontend alone: the browser hides what the
+server would refuse anyway.
+
+The login page learns which doors are open from `GET /auth/config`, an
+unauthenticated `{ signup_enabled, google_enabled }`. That keeps the policy in
+one place — server env — so flipping it is a Cloud Run env update rather than a
+frontend rebuild, and the button cannot disagree with the endpoint behind it. A
+failed config fetch is treated as both doors closed, leaving email and password,
+which is the path that still works when the flag is off.
+
 Either path ends at the same place: a 15-minute access JWT in an httpOnly cookie,
 plus an opaque refresh token whose SHA-256 is recorded in `auth_sessions`.
 `POST /auth/refresh` **rotates** — it revokes the presented record and issues a

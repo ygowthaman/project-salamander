@@ -52,6 +52,8 @@ const deleteMeBody = z.object({
   confirm: z.string().optional(),
 });
 
+const googleSignInAvailable = (): boolean => authConfig.signupEnabled && isGoogleConfigured();
+
 async function issueSession(
   request: FastifyRequest,
   reply: FastifyReply,
@@ -76,10 +78,19 @@ async function issueSession(
 }
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/auth/config", async () => ({
+    signup_enabled: authConfig.signupEnabled,
+    google_enabled: googleSignInAvailable(),
+  }));
+
   app.post(
     "/auth/signup",
     { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
     async (request, reply) => {
+      if (!authConfig.signupEnabled) {
+        return reply.code(403).send({ detail: "Account creation is disabled" });
+      }
+
       const parsed = signupBody.safeParse(request.body ?? {});
       if (!parsed.success) {
         return reply.code(422).send({ detail: parsed.error.issues });
@@ -139,8 +150,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   );
 
   app.get("/auth/google", async (request, reply) => {
-    if (!isGoogleConfigured()) {
-      return reply.code(503).send({ detail: "Google sign-in is not configured" });
+    if (!googleSignInAvailable()) {
+      return reply.code(503).send({ detail: "Google sign-in is unavailable" });
     }
 
     const state = randomToken();
@@ -155,6 +166,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const loginUrl = `${authConfig.frontendUrl}/login`;
     const fail = (reason: string) =>
       reply.redirect(`${loginUrl}?error=${encodeURIComponent(reason)}`);
+
+    if (!googleSignInAvailable()) return fail("google_unavailable");
 
     const query = request.query as { code?: string; state?: string; error?: string };
     if (query.error) return fail(query.error);

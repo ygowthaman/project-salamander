@@ -1,6 +1,16 @@
 import { User } from "../types";
 import { apiBaseUrl, apiFetch } from "./client";
 
+export interface AuthOptions {
+  signupEnabled: boolean;
+  googleEnabled: boolean;
+}
+
+export async function getAuthOptions(): Promise<AuthOptions> {
+  const body = await apiFetch<{ signup_enabled: boolean; google_enabled: boolean }>("/auth/config");
+  return { signupEnabled: body.signup_enabled, googleEnabled: body.google_enabled };
+}
+
 export async function getMe(): Promise<User> {
   return apiFetch<User>("/auth/me");
 }

@@ -235,7 +235,7 @@ gcloud run deploy salamander-server \
   --subnet=salamander-subnet \
   --vpc-egress=private-ranges-only \
   --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest \
-  --set-env-vars="^##^ALLOWED_ORIGINS=https://salamander.axoliz.ai##PUBLIC_API_URL=https://api.axoliz.ai##FRONTEND_URL=https://salamander.axoliz.ai##COOKIE_DOMAIN=axoliz.ai##GOOGLE_CLIENT_ID=REPLACE.apps.googleusercontent.com" \
+  --set-env-vars="^##^ALLOWED_ORIGINS=https://salamander.axoliz.ai##PUBLIC_API_URL=https://api.axoliz.ai##FRONTEND_URL=https://salamander.axoliz.ai##COOKIE_DOMAIN=axoliz.ai##GOOGLE_CLIENT_ID=REPLACE.apps.googleusercontent.com##SIGNUP_ENABLED=false" \
   --session-affinity \
   --timeout=3600 \
   --min-instances=1
@@ -248,6 +248,16 @@ gcloud run deploy salamander-server \
 > arrive cookie-less and 401 while working fine on localhost. §8 maps the service
 > to `api.axoliz.ai` so both sides sit under `axoliz.ai`; set `PUBLIC_API_URL`
 > and `FRONTEND_URL` to the mapped hostnames, not the `run.app` one.
+
+> **`SIGNUP_ENABLED=false` is what keeps the deployment private.** The service is
+> `--allow-unauthenticated` and the frontend is on the public internet, so
+> without this anyone reaching the login page can make themselves an account.
+> With it, `/auth/signup` returns 403 and the login page offers no way to create
+> one; the seeded account of 5a is the only way in. It also withdraws Google
+> sign-in — an unrecognised Google account would otherwise be created on the
+> spot — so `GOOGLE_CLIENT_ID` above is configured but dormant until this flips.
+> Reopening sign-up later is `gcloud run services update salamander-server
+> --update-env-vars=SIGNUP_ENABLED=true`, with no rebuild on either side.
 
 > **`^##^` is not optional.** `ALLOWED_ORIGINS` contains a comma, and gcloud uses
 > commas to separate *different* env vars — so an unescaped value fails with

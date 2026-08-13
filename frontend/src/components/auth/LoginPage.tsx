@@ -12,9 +12,9 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconBrandGoogleFilled } from "@tabler/icons-react";
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import logoUrl from "../../assets/simple_logo.svg";
-import { startGoogleLogin } from "../../api/auth";
+import { getAuthOptions, startGoogleLogin, AuthOptions } from "../../api/auth";
 import { useAuth } from "../../auth/useAuth";
 import { Wordmark } from "../Wordmark";
 import classes from "./LoginPage.module.css";
@@ -23,6 +23,7 @@ const OAUTH_ERRORS: Record<string, string> = {
   email_not_verified:
     "Google hasn't verified that email address, so we can't link it to an existing account. Sign in with your password instead.",
   google_auth_failed: "Google sign-in failed. Please try again.",
+  google_unavailable: "Google sign-in is no longer available. Sign in with your password instead.",
   state_mismatch: "That sign-in link expired. Please try again.",
   bad_state: "That sign-in link expired. Please try again.",
   missing_state: "That sign-in link expired. Please try again.",
@@ -45,6 +46,21 @@ export function LoginPage() {
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(initialOAuthError);
   const [busy, setBusy] = useState(false);
+  const [options, setOptions] = useState<AuthOptions | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAuthOptions()
+      .then((next) => {
+        if (!cancelled) setOptions(next);
+      })
+      .catch(() => {
+        if (!cancelled) setOptions({ signupEnabled: false, googleEnabled: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -85,16 +101,20 @@ export function LoginPage() {
           </Alert>
         )}
 
-        <Button
-          fullWidth
-          variant="default"
-          leftSection={<IconBrandGoogleFilled size={16} />}
-          onClick={startGoogleLogin}
-        >
-          Continue with Google
-        </Button>
+        {options?.googleEnabled && (
+          <>
+            <Button
+              fullWidth
+              variant="default"
+              leftSection={<IconBrandGoogleFilled size={16} />}
+              onClick={startGoogleLogin}
+            >
+              Continue with Google
+            </Button>
 
-        <Divider label="or" labelPosition="center" my="lg" />
+            <Divider label="or" labelPosition="center" my="lg" />
+          </>
+        )}
 
         <form onSubmit={handleSubmit}>
           <Stack gap="md">
@@ -133,21 +153,23 @@ export function LoginPage() {
           </Stack>
         </form>
 
-        <Anchor
-          component="button"
-          type="button"
-          onClick={switchMode}
-          size="xs"
-          c="dimmed"
-          ta="center"
-          mt="lg"
-          w="100%"
-          display="block"
-        >
-          {mode === "signin"
-            ? "Don't have an account? Create one"
-            : "Already have an account? Sign in"}
-        </Anchor>
+        {options?.signupEnabled && (
+          <Anchor
+            component="button"
+            type="button"
+            onClick={switchMode}
+            size="xs"
+            c="dimmed"
+            ta="center"
+            mt="lg"
+            w="100%"
+            display="block"
+          >
+            {mode === "signin"
+              ? "Don't have an account? Create one"
+              : "Already have an account? Sign in"}
+          </Anchor>
+        )}
       </Paper>
     </Center>
   );
