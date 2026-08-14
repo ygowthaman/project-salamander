@@ -25,7 +25,8 @@ Pointers only; the linked file is the answer.
 | Page | [`components/household/HouseholdPage.tsx`](../../frontend/src/components/household/HouseholdPage.tsx) |
 | Setup | [`components/household/HouseholdSetupModal.tsx`](../../frontend/src/components/household/HouseholdSetupModal.tsx) |
 | Settings | [`components/settings/HouseholdSettings.tsx`](../../frontend/src/components/settings/HouseholdSettings.tsx), [`HouseholdMembers.tsx`](../../frontend/src/components/settings/HouseholdMembers.tsx), [`HouseholdDangerZone.tsx`](../../frontend/src/components/settings/HouseholdDangerZone.tsx) |
-| Settings shell | [`components/settings/SettingsPage.tsx`](../../frontend/src/components/settings/SettingsPage.tsx), [`SettingsPlaceholder.tsx`](../../frontend/src/components/settings/SettingsPlaceholder.tsx) |
+| Settings shell | [`components/settings/SettingsPage.tsx`](../../frontend/src/components/settings/SettingsPage.tsx) |
+| Account | [`components/settings/ProfileSettings.tsx`](../../frontend/src/components/settings/ProfileSettings.tsx), [`PasswordSettings.tsx`](../../frontend/src/components/settings/PasswordSettings.tsx) |
 | Mount | [`components/home/HomePage.tsx`](../../frontend/src/components/home/HomePage.tsx), [`views.tsx`](../../frontend/src/components/home/views.tsx) |
 | Session | [`auth/AuthContext.tsx`](../../frontend/src/auth/AuthContext.tsx), [`auth/useAuth.ts`](../../frontend/src/auth/useAuth.ts) |
 

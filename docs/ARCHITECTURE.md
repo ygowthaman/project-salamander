@@ -506,6 +506,15 @@ plus an opaque refresh token whose SHA-256 is recorded in `auth_sessions`.
 new one — and treats a replayed, already-revoked token as a compromise signal,
 revoking every session for that user.
 
+A signed-in user maintains their own account through `PATCH /auth/me` (profile)
+and `POST /auth/change-password`. The password route revokes **every** session
+for that user and then issues a fresh one to the caller in the same request, so
+the browser that made the change stays signed in while every other device is
+turned out (PRD §2.4.3). Ordering matters: revoking after issuing would kill the
+session just minted. The route requires the current password only when the
+account has one, which is what lets a Google-only user set a first password
+without inventing a credential they never had.
+
 Google identities are linked on the provider's stable `sub`. If the email matches
 an existing password account, the two are linked **only when Google asserts the
 address is verified**; otherwise the attempt is refused, because auto-linking an
@@ -649,6 +658,7 @@ cap on socket lifetime.
 | `COOKIE_DOMAIN` | *(unset)* | `axoliz.ai` in production so one cookie spans frontend and API. Leave empty locally. |
 | `GOOGLE_CLIENT_ID` | *(unset)* | Optional — without it the server runs password-only and `/auth/google` returns 503. |
 | `GOOGLE_CLIENT_SECRET` | *(unset)* | As above. |
+| `SIGNUP_ENABLED` | `true` | `false` closes account creation: `/auth/signup` returns 403, and Google sign-in closes with it. |
 
 ### Frontend — `frontend/.env`
 
@@ -676,7 +686,7 @@ Hosting.
 | Cloud Run (job) | `salamander-db-reset` — wipes, replays and reseeds the database, once per deploy |
 | Firebase Hosting | Frontend (static React build) |
 | Compute Engine VM | PostgreSQL (self-managed; Cloud SQL is the growth path) |
-| Secret Manager | `ANTHROPIC_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_SECRET`, and the seed account's `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME` |
+| Secret Manager | `ANTHROPIC_API_KEY`, `DATABASE_URL`, `JWT_SECRET`, and the seed account's `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME`; `GOOGLE_CLIENT_SECRET` joins them where Google sign-in is configured |
 
 **No Docker.** Deploys build straight from the source tree with Cloud Buildpacks —
 there is no Dockerfile to maintain and no local Docker or Compose to install.

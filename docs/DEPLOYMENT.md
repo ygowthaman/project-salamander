@@ -6,7 +6,7 @@ reaches the VM over a private IP using **Direct VPC egress**; the frontend is a
 static build on **Firebase Hosting**.
 
 > **Trade-off you're accepting:** the VM is cheaper (an `e2-micro` is free-tier
-> eligible in `us-central1`) and fully under your control, but you own backups,
+> eligible in `us-west1`) and fully under your control, but you own backups,
 > patching, and uptime. There is no managed failover. Fine for a POC. If this
 > app grows, migrate to Cloud SQL (see `ARCHITECTURE.md` → Deployment).
 
@@ -30,8 +30,8 @@ Set these once per shell. Replace `PROJECT_ID` and pick a strong DB password.
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
-export REGION="us-central1"          # free-tier e2-micro region
-export ZONE="us-central1-a"
+export REGION="us-west1"             # free-tier e2-micro region
+export ZONE="us-west1-a"
 export SUBNET_CIDR="10.10.0.0/24"
 export PG_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=')"   # or set your own
 
@@ -95,7 +95,7 @@ gcloud compute instances create salamander-db \
 > `ZONE_RESOURCE_POOL_EXHAUSTED`. It means Google is out of that machine type in
 > that zone right now, not a config error. Loop over the region's zones
 > (`for z in ${REGION}-a ${REGION}-b ${REGION}-c; do ... --zone="$z" ... && break; done`),
-> and if a whole region is dry, move to another free-tier region (`us-west1`,
+> and if a whole region is dry, move to another free-tier region (`us-central1`,
 > `us-east1`) — but then you must recreate the **subnet, router, and NAT** in the
 > new region (the VPC is global and stays; those three are regional). Reusing the
 > same `SUBNET_CIDR` in the new region keeps the firewall rule valid unchanged.
@@ -137,10 +137,6 @@ printf 'postgresql://postgres:%s@%s:5432/salaman_db' "$PG_PASSWORD" "$VM_IP" | \
 openssl rand -base64 32 | tr -d '\n' | \
   gcloud secrets create jwt-secret --data-file=-
 
-# Google OAuth client secret — see §9 for creating the client itself.
-printf '%s' "GOCSPX-REPLACE_ME" | \
-  gcloud secrets create google-client-secret --data-file=-
-
 # The seed account the reset job creates (§5a). All three are secrets rather
 # than plain env vars so none of them — the password least of all — is readable
 # from the repository or from a deploy command in it.
@@ -151,7 +147,7 @@ printf '%s' "REPLACE ME"             | gcloud secrets create seed-user-name --da
 # Let Cloud Run's runtime service account read the secrets.
 export PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 export RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-for s in anthropic-api-key database-url jwt-secret google-client-secret \
+for s in anthropic-api-key database-url jwt-secret \
          seed-user-email seed-user-password seed-user-name; do
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:${RUNTIME_SA}" \
@@ -219,6 +215,13 @@ neither the Anthropic key nor the JWT/OAuth config. The seed variables have no
 defaults and are **validated before anything is dropped**, so a missing one fails
 the job with the database still intact.
 
+> **The seeded password is a delivery mechanism, not your password.** After the
+> first sign-in, change it under **Settings → Authentication**. That ends every
+> other session and leaves the browser you changed it in signed in. Note that the
+> next deploy reseeds from `seed-user-password` again and your chosen password
+> goes with the rebuilt database — so either keep the secret current, or expect
+> to change it again after each deploy for as long as 5a runs on every release.
+
 ### 5b. The service
 
 `--network`/`--subnet` turn on Direct VPC egress; `--vpc-egress=private-ranges-only`
@@ -234,8 +237,8 @@ gcloud run deploy salamander-server \
   --network=salamander-vpc \
   --subnet=salamander-subnet \
   --vpc-egress=private-ranges-only \
-  --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest \
-  --set-env-vars="^##^ALLOWED_ORIGINS=https://salamander.axoliz.ai##PUBLIC_API_URL=https://api.axoliz.ai##FRONTEND_URL=https://salamander.axoliz.ai##COOKIE_DOMAIN=axoliz.ai##GOOGLE_CLIENT_ID=REPLACE.apps.googleusercontent.com##SIGNUP_ENABLED=false" \
+  --set-secrets=ANTHROPIC_API_KEY=anthropic-api-key:latest,DATABASE_URL=database-url:latest,JWT_SECRET=jwt-secret:latest \
+  --set-env-vars="^##^ALLOWED_ORIGINS=https://salamander.axoliz.ai##PUBLIC_API_URL=https://api.axoliz.ai##FRONTEND_URL=https://salamander.axoliz.ai##COOKIE_DOMAIN=axoliz.ai##SIGNUP_ENABLED=false" \
   --session-affinity \
   --timeout=3600 \
   --min-instances=1
@@ -255,7 +258,7 @@ gcloud run deploy salamander-server \
 > With it, `/auth/signup` returns 403 and the login page offers no way to create
 > one; the seeded account of 5a is the only way in. It also withdraws Google
 > sign-in — an unrecognised Google account would otherwise be created on the
-> spot — so `GOOGLE_CLIENT_ID` above is configured but dormant until this flips.
+> spot — so §9 has no effect for as long as this stays `false`.
 > Reopening sign-up later is `gcloud run services update salamander-server
 > --update-env-vars=SIGNUP_ENABLED=true`, with no rebuild on either side.
 
@@ -458,7 +461,15 @@ npm run build
 firebase deploy --only hosting --project "$PROJECT_ID"
 ```
 
-## 9. Google OAuth client
+## 9. Google OAuth client (optional)
+
+Google sign-in is optional infrastructure: with no client configured the server
+runs on email and password alone and `/auth/google` answers `503`. Skip this
+section entirely if you don't want it.
+
+`SIGNUP_ENABLED=false` (§5b) produces that same `503` with a client perfectly
+well configured, so set it back to `true` in the same breath or none of the
+below takes effect.
 
 In the Cloud console → **APIs & Services**:
 
@@ -475,8 +486,24 @@ The redirect URI must match `${PUBLIC_API_URL}/auth/google/callback`
 **character for character**, or Google rejects the request with
 `redirect_uri_mismatch` before the user ever sees a consent screen.
 
-Put the client ID in `GOOGLE_CLIENT_ID` (a plain env var — it is public) and the
-secret in the `google-client-secret` Secret Manager entry from §4.
+The client ID is public and travels as a plain env var; the secret goes to Secret
+Manager alongside the others from §4:
+
+```bash
+printf '%s' "GOCSPX-REPLACE_ME" | \
+  gcloud secrets create google-client-secret --data-file=-
+
+gcloud secrets add-iam-policy-binding google-client-secret \
+  --member="serviceAccount:${RUNTIME_SA}" \
+  --role=roles/secretmanager.secretAccessor
+
+gcloud run services update salamander-server --region="$REGION" \
+  --update-secrets=GOOGLE_CLIENT_SECRET=google-client-secret:latest \
+  --update-env-vars=GOOGLE_CLIENT_ID=REPLACE.apps.googleusercontent.com
+```
+
+`--update-*` rather than `--set-*`: the set forms replace the whole collection
+and would drop the secrets and variables §5b established.
 
 ---
 

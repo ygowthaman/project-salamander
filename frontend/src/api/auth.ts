@@ -35,6 +35,23 @@ export async function signup(
   return { user, accountCreated: account_created === true };
 }
 
+export async function updateProfile(displayName: string | null): Promise<User> {
+  return apiFetch<User>("/auth/me", { method: "PATCH", body: { display_name: displayName } });
+}
+
+export async function changePassword(
+  currentPassword: string | null,
+  newPassword: string,
+): Promise<void> {
+  await apiFetch<{ ok: boolean }>("/auth/change-password", {
+    method: "POST",
+    body: {
+      ...(currentPassword === null ? {} : { current_password: currentPassword }),
+      new_password: newPassword,
+    },
+  });
+}
+
 export async function logout(): Promise<void> {
   await apiFetch<{ ok: boolean }>("/auth/logout", { method: "POST" });
 }

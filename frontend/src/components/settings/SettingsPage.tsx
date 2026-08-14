@@ -3,7 +3,8 @@ import { useMediaQuery } from "@mantine/hooks";
 import { IconHome, IconLock, IconUser } from "@tabler/icons-react";
 import { useState } from "react";
 import { HouseholdSettings } from "./HouseholdSettings";
-import { SettingsPlaceholder } from "./SettingsPlaceholder";
+import { PasswordSettings } from "./PasswordSettings";
+import { ProfileSettings } from "./ProfileSettings";
 
 type Section = "profile" | "authentication" | "household";
 
@@ -41,17 +42,11 @@ export function SettingsPage() {
           </Tabs.List>
 
           <Tabs.Panel value="profile" pl={narrow ? undefined : "xl"}>
-            <SettingsPlaceholder
-              title="Profile"
-              body="Your display name, email address and avatar will be editable here."
-            />
+            <ProfileSettings />
           </Tabs.Panel>
 
           <Tabs.Panel value="authentication" pl={narrow ? undefined : "xl"}>
-            <SettingsPlaceholder
-              title="Authentication"
-              body="Setting or changing your password, linking a Google account, and signing out of other devices will live here."
-            />
+            <PasswordSettings />
           </Tabs.Panel>
 
           <Tabs.Panel value="household" pl={narrow ? undefined : "xl"}>

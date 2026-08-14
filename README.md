@@ -22,8 +22,9 @@ Read next:
 > **Current state: accounts, categories and inventory.** Sign in with Google or
 > with email + password, on a foundation of Fastify, Postgres and Drizzle, then
 > add, change, remove and search items either through the form or by typing a
-> sentence. The sentence above is the present tense; the cart and the live push
-> to other members are not.
+> sentence. Settings carries your display name and your password. The sentence
+> above is the present tense; the cart and the live push to other members are
+> not.
 
 | Piece | Stack | Local URL |
 |---|---|---|
@@ -138,6 +139,7 @@ inventory, categories and household settings.
 | `FRONTEND_URL` | `http://localhost:5173` | Where the browser lands after an OAuth round-trip |
 | `COOKIE_DOMAIN` | *(empty)* | Leave empty locally. In production, the shared registrable domain so one cookie covers the app and API hosts |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | *(empty)* | Optional — blank means email + password only, with `/auth/google` returning 503 |
+| `SIGNUP_ENABLED` | `true` | `false` closes account creation — `/auth/signup` returns 403 and the login page stops offering a way to create one. Google sign-in closes with it, since an unrecognised Google account would otherwise be created on the spot |
 | `SEED_USER_EMAIL` / `SEED_USER_PASSWORD` / `SEED_USER_NAME` | — | The one account a `db:reset` rebuild creates. **No defaults, all three required on that path** — the reset refuses before dropping anything if one is missing. Never read by the running server |
 
 `DATABASE_URL` takes a plain `postgresql://` scheme, with no dialect suffix.
